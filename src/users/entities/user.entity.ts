@@ -14,22 +14,22 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'full_name' })
+  @Column({ name: 'full_name', type: 'varchar', length: 255 })
   fullName: string;
 
-  @Column({ name: 'whatsapp_phone', nullable: true })
+  @Column({ name: 'whatsapp_phone', type: 'varchar', length: 64, nullable: true })
   whatsappPhone: string | null;
 
-  @Column({ unique: true })
+  @Column({ type: 'varchar', length: 255, unique: true })
   email: string;
 
-  @Column({ name: 'password_hash', select: false })
+  @Column({ name: 'password_hash', type: 'varchar', length: 255, select: false })
   passwordHash: string;
 
   @Column({ type: 'varchar', length: 32 })
   role: string;
 
-  @Column({ name: 'brand_id', nullable: true })
+  @Column({ name: 'brand_id', type: 'int', nullable: true })
   brandId: number | null;
 
   @ManyToOne(() => Brand, { nullable: true })
