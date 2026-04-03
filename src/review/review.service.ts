@@ -1,12 +1,16 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
 import { WhatsappMessage }  from '../messages/entities/whatsapp-message.entity';
 import { ParsedReport }     from './entities/parsed-report.entity';
 import { ReportFlag }       from './entities/report-flag.entity';
+
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class ReviewService {
@@ -21,20 +25,12 @@ export class ReviewService {
     private msgRepo: Repository<WhatsappMessage>,
   ) {}
 
-  private parseReportId(param: string): number {
-    const id = parseInt(param, 10);
-    if (Number.isNaN(id)) {
-      throw new NotFoundException(`Report ${param} not found`);
+  private assertReportUuid(id: string) {
+    if (!UUID_V4_REGEX.test(id)) {
+      throw new BadRequestException(
+        `Invalid report ID format: "${id}". Expected a UUID.`,
+      );
     }
-    return id;
-  }
-
-  private parseFlagId(param: string): number {
-    const id = parseInt(param, 10);
-    if (Number.isNaN(id)) {
-      throw new NotFoundException(`Flag ${param} not found`);
-    }
-    return id;
   }
 
   // ── Review Queue ──────────────────────────────────────────────────
@@ -53,8 +49,6 @@ export class ReviewService {
       limit  = 20,
     } = filters;
 
-    // Step 1: Build base query WITHOUT join or orderBy on joined table
-    // Use simple find with where conditions to avoid the databaseName error
     const query = this.reportsRepo
       .createQueryBuilder('r')
       .where('r.status = :status', { status })
@@ -73,16 +67,13 @@ export class ReviewService {
       query.andWhere('r.report_type = :reportType', { reportType });
     }
 
-    // Step 2: Get reports and total count separately
     const [reports, total] = await query.getManyAndCount();
 
-    // Step 3: For each report, fetch its open flags separately
-    // This avoids the broken leftJoinAndMapMany that caused the error
     const reportsWithFlags = await Promise.all(
       reports.map(async (report) => {
         const flags = await this.flagsRepo.find({
           where: {
-            reportId: report.id,
+            reportId: report.id as unknown as ReportFlag['reportId'],
             status:   'open',
           },
           order: {
@@ -103,19 +94,19 @@ export class ReviewService {
 
   // ── Single Report with all details ───────────────────────────────
   async getReport(id: string) {
-    const numericId = this.parseReportId(id);
+    this.assertReportUuid(id);
+
     const report = await this.reportsRepo.findOne({
-      where: { id: numericId },
+      where: { id: id as unknown as ParsedReport['id'] },
       relations: ['brand', 'outlet', 'reportedBy'],
     });
 
     if (!report) {
-      throw new NotFoundException(`Report ${id} not found`);
+      throw new NotFoundException(`Report with id "${id}" not found`);
     }
 
-    // Fetch all flags for this report (all statuses)
     const flags = await this.flagsRepo.find({
-      where:  { reportId: numericId },
+      where:  { reportId: id as unknown as ReportFlag['reportId'] },
       order:  { createdAt: 'DESC' },
     });
 
@@ -135,24 +126,29 @@ export class ReviewService {
 
   // ── Approve Report ────────────────────────────────────────────────
   async approve(id: string, userId: number) {
-    const numericId = this.parseReportId(id);
-    const report = await this.reportsRepo.findOne({ where: { id: numericId } });
+    const report = await this.reportsRepo.findOne({
+      where: { id: id as unknown as ParsedReport['id'] },
+    });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
 
-    // Update report status
-    await this.reportsRepo.update(numericId, { status: 'approved' });
+    await this.reportsRepo.update(
+      { id: id as unknown as ParsedReport['id'] },
+      { status: 'approved' },
+    );
 
-    // Resolve all open flags for this report
     const openFlags = await this.flagsRepo.find({
-      where: { reportId: numericId, status: 'open' },
+      where: {
+        reportId: id as unknown as ReportFlag['reportId'],
+        status: 'open',
+      },
     });
 
     await Promise.all(
       openFlags.map((flag) =>
         this.flagsRepo.update(flag.id, {
-          status:     'resolved',
+          status:       'resolved',
           resolvedById: userId,
-          resolvedAt: new Date(),
+          resolvedAt:   new Date(),
         }),
       ),
     );
@@ -162,31 +158,38 @@ export class ReviewService {
 
   // ── Reject Report ─────────────────────────────────────────────────
   async reject(id: string) {
-    const numericId = this.parseReportId(id);
-    const report = await this.reportsRepo.findOne({ where: { id: numericId } });
+    const report = await this.reportsRepo.findOne({
+      where: { id: id as unknown as ParsedReport['id'] },
+    });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
 
-    await this.reportsRepo.update(numericId, { status: 'rejected' });
+    await this.reportsRepo.update(
+      { id: id as unknown as ParsedReport['id'] },
+      { status: 'rejected' },
+    );
 
     return this.getReport(id);
   }
 
   // ── Update Report Fields ──────────────────────────────────────────
   async update(id: string, data: Partial<ParsedReport>) {
-    const numericId = this.parseReportId(id);
-    const report = await this.reportsRepo.findOne({ where: { id: numericId } });
+    const report = await this.reportsRepo.findOne({
+      where: { id: id as unknown as ParsedReport['id'] },
+    });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
 
-    // Remove fields that should not be updated directly
     const { id: _id, createdAt: _c, ...updateData } = data as any;
 
-    await this.reportsRepo.update(numericId, {
-      ...updateData,
-      status: 'pending_review',
-    });
+    await this.reportsRepo.update(
+      { id: id as unknown as ParsedReport['id'] },
+      {
+        ...updateData,
+        status: 'pending_review',
+      },
+    );
 
     const updated = await this.reportsRepo.findOne({
-      where: { id: numericId },
+      where: { id: id as unknown as ParsedReport['id'] },
       relations: ['brand', 'outlet', 'flags', 'reportedBy'],
     });
     if (!updated) {
@@ -197,32 +200,44 @@ export class ReviewService {
 
   // ── Resolve Flag ──────────────────────────────────────────────────
   async resolveFlag(flagId: string, userId: number) {
-    const id = this.parseFlagId(flagId);
-    const flag = await this.flagsRepo.findOne({ where: { id } });
+    const flag = await this.flagsRepo.findOne({
+      where: { id: flagId as unknown as ReportFlag['id'] },
+    });
     if (!flag) throw new NotFoundException(`Flag ${flagId} not found`);
 
-    await this.flagsRepo.update(id, {
-      status:       'resolved',
-      resolvedById: userId,
-      resolvedAt:   new Date(),
-    });
+    await this.flagsRepo.update(
+      { id: flagId as unknown as ReportFlag['id'] },
+      {
+        status:       'resolved',
+        resolvedById: userId,
+        resolvedAt:   new Date(),
+      },
+    );
 
-    return this.flagsRepo.findOne({ where: { id } });
+    return this.flagsRepo.findOne({
+      where: { id: flagId as unknown as ReportFlag['id'] },
+    });
   }
 
   // ── Dismiss Flag ──────────────────────────────────────────────────
   async dismissFlag(flagId: string, userId: number) {
-    const id = this.parseFlagId(flagId);
-    const flag = await this.flagsRepo.findOne({ where: { id } });
+    const flag = await this.flagsRepo.findOne({
+      where: { id: flagId as unknown as ReportFlag['id'] },
+    });
     if (!flag) throw new NotFoundException(`Flag ${flagId} not found`);
 
-    await this.flagsRepo.update(id, {
-      status:       'dismissed',
-      resolvedById: userId,
-      resolvedAt:   new Date(),
-    });
+    await this.flagsRepo.update(
+      { id: flagId as unknown as ReportFlag['id'] },
+      {
+        status:       'dismissed',
+        resolvedById: userId,
+        resolvedAt:   new Date(),
+      },
+    );
 
-    return this.flagsRepo.findOne({ where: { id } });
+    return this.flagsRepo.findOne({
+      where: { id: flagId as unknown as ReportFlag['id'] },
+    });
   }
 
   // ── Get Queue Count (for sidebar badge) ──────────────────────────

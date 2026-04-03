@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -46,38 +47,45 @@ export class ProductsController {
   @Delete('aliases/:aliasId')
   @Roles('super_admin', 'brand_manager')
   removeAlias(
-    @Param('aliasId', ParseIntPipe) aliasId: number,
+    @Param('aliasId', new ParseUUIDPipe({ version: '4' })) aliasId: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.removeAlias(aliasId, current);
+    return this.productsService.removeAlias(
+      aliasId as unknown as number,
+      current,
+    );
   }
 
   @Get(':id/aliases')
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   listAliases(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.listAliases(id, current);
+    return this.productsService.listAliases(id as unknown as number, current);
   }
 
   @Post(':id/aliases')
   @Roles('super_admin', 'brand_manager', 'reviewer')
   addAlias(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: CreateAliasDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.addAlias(id, dto, current);
+    return this.productsService.addAlias(
+      id as unknown as number,
+      dto,
+      current,
+    );
   }
 
   @Get(':id')
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   findOne(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.findOne(id, current);
+    return this.productsService.findOne(id as unknown as number, current);
   }
 
   @Post()
@@ -89,16 +97,19 @@ export class ProductsController {
   @Patch(':id')
   @Roles('super_admin', 'brand_manager')
   update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateProductDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.update(id, dto, current);
+    return this.productsService.update(id as unknown as number, dto, current);
   }
 
   @Delete(':id')
   @Roles('super_admin')
-  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() current: JwtUser) {
-    return this.productsService.softDelete(id, current);
+  remove(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() current: JwtUser,
+  ) {
+    return this.productsService.softDelete(id as unknown as number, current);
   }
 }

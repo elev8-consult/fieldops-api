@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -37,8 +38,11 @@ export class UsersController {
 
   @Get(':id')
   @Roles('super_admin', 'brand_manager')
-  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() current: JwtUser) {
-    return this.usersService.findOne(id, current);
+  findOne(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() current: JwtUser,
+  ) {
+    return this.usersService.findOne(id as unknown as number, current);
   }
 
   @Post()
@@ -50,16 +54,19 @@ export class UsersController {
   @Patch(':id')
   @Roles('super_admin', 'brand_manager')
   update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateUserDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.usersService.update(id, dto, current);
+    return this.usersService.update(id as unknown as number, dto, current);
   }
 
   @Delete(':id')
   @Roles('super_admin')
-  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() current: JwtUser) {
-    return this.usersService.softDelete(id, current);
+  remove(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() current: JwtUser,
+  ) {
+    return this.usersService.softDelete(id as unknown as number, current);
   }
 }

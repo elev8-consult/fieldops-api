@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -49,9 +50,9 @@ export class MessagesController {
   @Get(':id')
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   findOne(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.messagesService.findOne(id, current);
+    return this.messagesService.findOne(id as unknown as number, current);
   }
 }

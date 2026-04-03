@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Query,
   UseGuards,
@@ -55,41 +56,55 @@ export class PromoterController {
   @Get(':id')
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   findOne(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.promoterService.findOne(id, current);
+    return this.promoterService.findOne(id as unknown as number, current);
   }
 
   @Patch(':id')
   @Roles('super_admin', 'brand_manager', 'reviewer')
   updateReport(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdatePromoterReportDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.promoterService.updateReport(id, dto, current);
+    return this.promoterService.updateReport(
+      id as unknown as number,
+      dto,
+      current,
+    );
   }
 
   @Patch(':id/sales/:itemId')
   @Roles('super_admin', 'brand_manager', 'reviewer')
   updateSale(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('itemId', ParseIntPipe) itemId: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
     @Body() dto: UpdatePromoterSaleItemDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.promoterService.updateSaleItem(id, itemId, dto, current);
+    return this.promoterService.updateSaleItem(
+      id as unknown as number,
+      itemId as unknown as number,
+      dto,
+      current,
+    );
   }
 
   @Patch(':id/samples/:itemId')
   @Roles('super_admin', 'brand_manager', 'reviewer')
   updateSample(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('itemId', ParseIntPipe) itemId: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
     @Body() dto: UpdatePromoterSampleItemDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.promoterService.updateSampleItem(id, itemId, dto, current);
+    return this.promoterService.updateSampleItem(
+      id as unknown as number,
+      itemId as unknown as number,
+      dto,
+      current,
+    );
   }
 }

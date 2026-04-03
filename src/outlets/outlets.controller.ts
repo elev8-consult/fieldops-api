@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -46,10 +47,10 @@ export class OutletsController {
   @Get(':id')
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   findOne(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.outletsService.findOne(id, current);
+    return this.outletsService.findOne(id as unknown as number, current);
   }
 
   @Post()
@@ -60,13 +61,16 @@ export class OutletsController {
 
   @Patch(':id')
   @Roles('super_admin', 'brand_manager')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateOutletDto) {
-    return this.outletsService.update(id, dto);
+  update(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateOutletDto,
+  ) {
+    return this.outletsService.update(id as unknown as number, dto);
   }
 
   @Delete(':id')
   @Roles('super_admin')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.outletsService.softDelete(id);
+  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.outletsService.softDelete(id as unknown as number);
   }
 }

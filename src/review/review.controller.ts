@@ -7,6 +7,7 @@ import {
   Body,
   Query,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ReviewService } from './review.service';
 import { JwtAuthGuard }  from '../common/guards/jwt-auth.guard';
@@ -39,53 +40,49 @@ export class ReviewController {
     return this.reviewService.getQueueCount(brandId);
   }
 
-  @Get('flags/:flagId/resolve')
-  resolveFlag(
-    @Param('flagId') flagId: string,
-    @CurrentUser()   user:   any,
-  ) {
-    return this.reviewService.resolveFlag(flagId, user.id);
-  }
-
   @Patch('flags/:flagId/resolve')
-  resolveFlag2(
-    @Param('flagId') flagId: string,
-    @CurrentUser()   user:   any,
+  resolveFlag(
+    @Param('flagId', new ParseUUIDPipe({ version: '4' })) flagId: string,
+    @CurrentUser() user: any,
   ) {
     return this.reviewService.resolveFlag(flagId, user.id);
   }
 
   @Patch('flags/:flagId/dismiss')
   dismissFlag(
-    @Param('flagId') flagId: string,
-    @CurrentUser()   user:   any,
+    @Param('flagId', new ParseUUIDPipe({ version: '4' })) flagId: string,
+    @CurrentUser() user: any,
   ) {
     return this.reviewService.dismissFlag(flagId, user.id);
   }
 
   @Get(':id')
-  getReport(@Param('id') id: string) {
+  getReport(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
     return this.reviewService.getReport(id);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id:   string,
-    @Body()      body: any,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: any,
   ) {
     return this.reviewService.update(id, body);
   }
 
   @Post(':id/approve')
   approve(
-    @Param('id')   id:   string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() user: any,
   ) {
     return this.reviewService.approve(id, user.id);
   }
 
   @Post(':id/reject')
-  reject(@Param('id') id: string) {
+  reject(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
     return this.reviewService.reject(id);
   }
 }

@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Query,
   UseGuards,
@@ -54,30 +55,39 @@ export class MerchandiserController {
   @Get(':id')
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   findOne(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.merchandiserService.findOne(id, current);
+    return this.merchandiserService.findOne(id as unknown as number, current);
   }
 
   @Patch(':id')
   @Roles('super_admin', 'brand_manager', 'reviewer')
   updateReport(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateMerchandiserReportDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.merchandiserService.updateReport(id, dto, current);
+    return this.merchandiserService.updateReport(
+      id as unknown as number,
+      dto,
+      current,
+    );
   }
 
   @Patch(':id/items/:itemId')
   @Roles('super_admin', 'brand_manager', 'reviewer')
   updateItem(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('itemId', ParseIntPipe) itemId: number,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
     @Body() dto: UpdateMerchandiserItemDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.merchandiserService.updateItem(id, itemId, dto, current);
+    return this.merchandiserService.updateItem(
+      id as unknown as number,
+      itemId as unknown as number,
+      dto,
+      current,
+    );
   }
 }
