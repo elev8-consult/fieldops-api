@@ -14,17 +14,17 @@ export class ReportFlag {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'report_id' })
+  @Column({ name: 'report_id', type: 'int' })
   reportId: number;
 
   @ManyToOne(() => ParsedReport, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'report_id' })
   report: ParsedReport;
 
-  @Column({ name: 'flag_code' })
+  @Column({ name: 'flag_code', type: 'varchar', length: 64 })
   flagCode: string;
 
-  @Column({ name: 'field_name', nullable: true })
+  @Column({ name: 'field_name', type: 'varchar', length: 255, nullable: true })
   fieldName: string | null;
 
   @Column({ type: 'varchar', length: 16 })
@@ -36,7 +36,7 @@ export class ReportFlag {
   @Column({ type: 'varchar', length: 32 })
   status: string;
 
-  @Column({ name: 'resolved_by', nullable: true })
+  @Column({ name: 'resolved_by', type: 'int', nullable: true })
   resolvedById: number | null;
 
   @ManyToOne(() => User, { nullable: true })

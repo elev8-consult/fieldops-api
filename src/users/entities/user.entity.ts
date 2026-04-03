@@ -36,7 +36,7 @@ export class User {
   @JoinColumn({ name: 'brand_id' })
   brand: Brand | null;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
   @CreateDateColumn({ name: 'created_at' })

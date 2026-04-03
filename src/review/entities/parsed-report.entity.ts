@@ -19,28 +19,28 @@ export class ParsedReport {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'message_id' })
+  @Column({ name: 'message_id', type: 'int' })
   messageId: number;
 
   @ManyToOne(() => WhatsappMessage)
   @JoinColumn({ name: 'message_id' })
   message: WhatsappMessage;
 
-  @Column({ name: 'brand_id' })
+  @Column({ name: 'brand_id', type: 'int' })
   brandId: number;
 
   @ManyToOne(() => Brand)
   @JoinColumn({ name: 'brand_id' })
   brand: Brand;
 
-  @Column({ name: 'outlet_id', nullable: true })
+  @Column({ name: 'outlet_id', type: 'int', nullable: true })
   outletId: number | null;
 
   @ManyToOne(() => Outlet, { nullable: true })
   @JoinColumn({ name: 'outlet_id' })
   outlet: Outlet | null;
 
-  @Column({ name: 'reported_by', nullable: true })
+  @Column({ name: 'reported_by', type: 'int', nullable: true })
   reportedById: number | null;
 
   @ManyToOne(() => User, { nullable: true })
@@ -62,13 +62,13 @@ export class ParsedReport {
   @Column({ name: 'location_raw', type: 'text', nullable: true })
   locationRaw: string | null;
 
-  @Column({ name: 'date_raw', nullable: true })
+  @Column({ name: 'date_raw', type: 'varchar', length: 512, nullable: true })
   dateRaw: string | null;
 
-  @Column({ name: 'name_raw', nullable: true })
+  @Column({ name: 'name_raw', type: 'varchar', length: 512, nullable: true })
   nameRaw: string | null;
 
-  @Column({ name: 'is_depot_report', default: false })
+  @Column({ name: 'is_depot_report', type: 'boolean', default: false })
   isDepotReport: boolean;
 
   @CreateDateColumn({ name: 'created_at' })

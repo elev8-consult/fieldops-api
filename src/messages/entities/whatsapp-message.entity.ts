@@ -14,13 +14,13 @@ export class WhatsappMessage {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'wa_message_id', unique: true })
+  @Column({ name: 'wa_message_id', type: 'varchar', length: 255, unique: true })
   waMessageId: string;
 
-  @Column({ name: 'sender_phone' })
+  @Column({ name: 'sender_phone', type: 'varchar', length: 64 })
   senderPhone: string;
 
-  @Column({ name: 'sender_name', nullable: true })
+  @Column({ name: 'sender_name', type: 'varchar', length: 255, nullable: true })
   senderName: string | null;
 
   @Column({ name: 'body_raw', type: 'text', nullable: true })
@@ -29,10 +29,10 @@ export class WhatsappMessage {
   @Column({ name: 'body_normalized', type: 'text', nullable: true })
   bodyNormalized: string | null;
 
-  @Column({ name: 'message_type', nullable: true })
+  @Column({ name: 'message_type', type: 'varchar', length: 32, nullable: true })
   messageType: string | null;
 
-  @Column({ name: 'has_media', default: false })
+  @Column({ name: 'has_media', type: 'boolean', default: false })
   hasMedia: boolean;
 
   @Column({ name: 'report_type', type: 'varchar', length: 32 })
@@ -56,7 +56,7 @@ export class WhatsappMessage {
   @Column({ name: 'processed_at', type: 'timestamptz', nullable: true })
   processedAt: Date | null;
 
-  @Column({ name: 'reviewed_by', nullable: true })
+  @Column({ name: 'reviewed_by', type: 'int', nullable: true })
   reviewedById: number | null;
 
   @ManyToOne(() => User, { nullable: true })

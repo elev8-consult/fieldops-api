@@ -14,17 +14,17 @@ export class ProductAlias {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'product_id' })
+  @Column({ name: 'product_id', type: 'int' })
   productId: number;
 
   @ManyToOne(() => Product, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'product_id' })
   product: Product;
 
-  @Column()
+  @Column({ type: 'varchar', length: 512 })
   alias: string;
 
-  @Column({ name: 'created_by', nullable: true })
+  @Column({ name: 'created_by', type: 'int', nullable: true })
   createdById: number | null;
 
   @ManyToOne(() => User, { nullable: true })

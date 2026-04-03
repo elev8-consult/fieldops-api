@@ -16,7 +16,7 @@ export class PromoterReport {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'report_id', unique: true })
+  @Column({ name: 'report_id', type: 'int', unique: true })
   reportId: number;
 
   @OneToOne(() => ParsedReport)

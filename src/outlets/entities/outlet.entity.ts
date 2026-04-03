@@ -14,16 +14,16 @@ export class Outlet {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
+  @Column({ type: 'varchar', length: 255 })
   name: string;
 
-  @Column({ type: 'varchar', length: 32 })
+  @Column({ type: 'varchar', length: 32, default: 'supermarket' })
   type: string;
 
-  @Column({ name: 'is_depot', default: false })
+  @Column({ name: 'is_depot', type: 'boolean', default: false })
   isDepot: boolean;
 
-  @Column({ name: 'region_id' })
+  @Column({ name: 'region_id', type: 'int' })
   regionId: number;
 
   @ManyToOne(() => Region)
@@ -33,7 +33,7 @@ export class Outlet {
   @Column({ type: 'text', nullable: true })
   address: string | null;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
   @CreateDateColumn({ name: 'created_at' })

@@ -14,26 +14,26 @@ export class Product {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'brand_id' })
+  @Column({ name: 'brand_id', type: 'int' })
   brandId: number;
 
   @ManyToOne(() => Brand)
   @JoinColumn({ name: 'brand_id' })
   brand: Brand;
 
-  @Column({ name: 'canonical_name' })
+  @Column({ name: 'canonical_name', type: 'varchar', length: 512 })
   canonicalName: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   sku: string | null;
 
-  @Column({ type: 'varchar', length: 32 })
+  @Column({ type: 'varchar', length: 32, default: 'both' })
   flow: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
   unit: string | null;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
   @CreateDateColumn({ name: 'created_at' })

@@ -15,14 +15,14 @@ export class MerchandiserReport {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'report_id', unique: true })
+  @Column({ name: 'report_id', type: 'int', unique: true })
   reportId: number;
 
   @OneToOne(() => ParsedReport)
   @JoinColumn({ name: 'report_id' })
   parsedReport: ParsedReport;
 
-  @Column({ name: 'promo_type', nullable: true })
+  @Column({ name: 'promo_type', type: 'varchar', length: 255, nullable: true })
   promoType: string | null;
 
   @Column({ type: 'text', nullable: true })

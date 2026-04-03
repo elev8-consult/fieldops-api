@@ -5,10 +5,10 @@ export class Region {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
+  @Column({ type: 'varchar', length: 255 })
   name: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 255 })
   country: string;
 
   @CreateDateColumn({ name: 'created_at' })
