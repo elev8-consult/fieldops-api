@@ -20,7 +20,7 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Get()
-  @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
+  @UseGuards(JwtAuthGuard)
   findAll(
     @Query('status')       status?:      string,
     @Query('report_type')  reportType?:  string,
@@ -31,15 +31,18 @@ export class MessagesController {
     @Query('page')         page?:        string,
     @Query('limit')        limit?:       string,
   ) {
+    const parsedPage  = page  ? parseInt(page,  10) : 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : 20;
+
     return this.messagesService.findAll({
       status,
       reportType,
-      brandId,
-      senderPhone,
-      from,
-      to,
-      page:  page  ? parseInt(page,  10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
+      brandId:     brandId     || undefined,
+      senderPhone: senderPhone || undefined,
+      from:        from        || undefined,
+      to:          to          || undefined,
+      page:        isNaN(parsedPage)  ? 1  : parsedPage,
+      limit:       isNaN(parsedLimit) ? 20 : parsedLimit,
     });
   }
 

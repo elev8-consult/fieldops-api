@@ -26,18 +26,21 @@ export class ReviewController {
     @Query('page')        page?:       string,
     @Query('limit')       limit?:      string,
   ) {
+    const parsedPage  = page  ? parseInt(page,  10) : 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : 20;
+
     return this.reviewService.getQueue({
-      brandId,
-      reportType,
-      status,
-      page:  page  ? parseInt(page,  10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
+      brandId:    brandId    || undefined,
+      reportType: reportType || undefined,
+      status:     status     || undefined,
+      page:       isNaN(parsedPage)  ? 1  : parsedPage,
+      limit:      isNaN(parsedLimit) ? 20 : parsedLimit,
     });
   }
 
   @Get('count')
   getCount(@Query('brand_id') brandId?: string) {
-    return this.reviewService.getQueueCount(brandId);
+    return this.reviewService.getQueueCount(brandId || undefined);
   }
 
   @Patch('flags/:flagId/resolve')

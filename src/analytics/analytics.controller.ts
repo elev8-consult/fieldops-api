@@ -55,9 +55,10 @@ export class AnalyticsController {
     @Query('brand_id') brandId?: string,
     @Query('limit') limit?: string,
   ) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 10;
     return this.analyticsService.getTopFlaggedProducts(
-      brandId,
-      limit ? parseInt(limit, 10) : 10,
+      brandId || undefined,
+      isNaN(parsedLimit) ? 10 : parsedLimit,
     );
   }
 }

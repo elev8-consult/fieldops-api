@@ -28,38 +28,39 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof QueryFailedError) {
       const err = exception as any;
 
-      // UUID validation error
-      if (err.code === '22P02') {
-        status  = HttpStatus.BAD_REQUEST;
-        message = 'Invalid ID format. Expected a valid UUID.';
-
-      // Not null violation
-      } else if (err.code === '23502') {
-        status  = HttpStatus.BAD_REQUEST;
-        message = `Missing required field: ${err.column ?? 'unknown'}`;
-
-      // Unique violation
-      } else if (err.code === '23505') {
-        status  = HttpStatus.CONFLICT;
-        message = 'A record with this value already exists.';
-
-      // Foreign key violation
-      } else if (err.code === '23503') {
-        status  = HttpStatus.BAD_REQUEST;
-        message = 'Referenced record does not exist.';
-
-      } else {
-        status  = HttpStatus.BAD_REQUEST;
-        message = 'Database error: ' + (err.message ?? 'unknown');
-      }
-
       this.logger.error(
-        `QueryFailedError [${err.code}]: ${err.message}`,
-        err.stack,
+        `QueryFailedError [${err.code}] on ${request.method} ${request.url}: ${err.message}`,
       );
 
+      switch (err.code) {
+        case '22P02':
+          status  = HttpStatus.BAD_REQUEST;
+          message = `Invalid ID format. Value received: "${
+            err.parameters?.[0] ?? 'unknown'
+          }". Expected a valid UUID.`;
+          break;
+        case '23502':
+          status  = HttpStatus.BAD_REQUEST;
+          message = `Missing required field: ${err.column ?? 'unknown'}`;
+          break;
+        case '23505':
+          status  = HttpStatus.CONFLICT;
+          message = 'A record with this value already exists.';
+          break;
+        case '23503':
+          status  = HttpStatus.BAD_REQUEST;
+          message = 'Referenced record does not exist.';
+          break;
+        default:
+          status  = HttpStatus.BAD_REQUEST;
+          message = `Database error [${err.code}]: ${err.message ?? 'unknown'}`;
+      }
+
     } else if (exception instanceof Error) {
-      this.logger.error(exception.message, exception.stack);
+      this.logger.error(
+        `Unhandled error on ${request.method} ${request.url}: ${exception.message}`,
+        exception.stack,
+      );
       message = exception.message;
     }
 
