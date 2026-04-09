@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { ParsedReport } from '../review/entities/parsed-report.entity';
 
@@ -9,6 +9,7 @@ export class AnalyticsService {
   constructor(
     @InjectRepository(ParsedReport)
     private readonly parsedRepo: Repository<ParsedReport>,
+    private dataSource: DataSource,
   ) {}
 
   /** null = all brands (super_admin only, when brand_id query omitted) */
@@ -157,5 +158,67 @@ export class AnalyticsService {
       productNameRaw: r.product_name_raw,
       count: parseInt(r.cnt, 10),
     }));
+  }
+
+  async getReportsByDay(
+    brandId?: string,
+    from?:    string,
+    to?:      string,
+  ) {
+    let sql = `
+      SELECT
+        DATE(report_date) AS day,
+        report_type,
+        COUNT(*)::int     AS count
+      FROM parsed_reports
+      WHERE report_date IS NOT NULL
+    `;
+
+    const params: any[] = [];
+
+    if (brandId) {
+      params.push(brandId);
+      sql += ` AND brand_id = $${params.length}`;
+    }
+    if (from) {
+      params.push(from);
+      sql += ` AND report_date >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      sql += ` AND report_date <= $${params.length}`;
+    }
+
+    sql += ` GROUP BY DATE(report_date), report_type ORDER BY day DESC LIMIT 60`;
+
+    return this.dataSource.query(sql, params);
+  }
+
+  async getTopFlaggedProducts(brandId?: string, limit = 10) {
+    let sql = `
+      SELECT
+        mri.product_name_raw,
+        COUNT(*)::int AS count
+      FROM merchandiser_report_items mri
+      JOIN merchandiser_reports mr ON mr.id = mri.merchandiser_report_id
+      JOIN parsed_reports pr       ON pr.id = mr.report_id
+      WHERE mri.is_product_matched = false
+    `;
+
+    const params: any[] = [];
+
+    if (brandId) {
+      params.push(brandId);
+      sql += ` AND pr.brand_id = $${params.length}`;
+    }
+
+    params.push(limit);
+    sql += `
+      GROUP BY mri.product_name_raw
+      ORDER BY count DESC
+      LIMIT $${params.length}
+    `;
+
+    return this.dataSource.query(sql, params);
   }
 }

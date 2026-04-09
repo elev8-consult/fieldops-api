@@ -8,17 +8,6 @@ import { Repository } from 'typeorm';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { WhatsappMessage } from './entities/whatsapp-message.entity';
 
-export interface MessageListQuery {
-  status?: string;
-  reportType?: string;
-  brandId?: number;
-  senderPhone?: string;
-  from?: string;
-  to?: string;
-  page?: number;
-  limit?: number;
-}
-
 @Injectable()
 export class MessagesService {
   constructor(
@@ -26,55 +15,49 @@ export class MessagesService {
     private readonly msgRepo: Repository<WhatsappMessage>,
   ) {}
 
-  async findAll(current: JwtUser, q: MessageListQuery) {
-    if (current.role === 'promoter' || current.role === 'merchandiser') {
-      throw new ForbiddenException();
-    }
+  async findAll(filters: {
+    status?:      string;
+    reportType?:  string;
+    brandId?:     string;
+    senderPhone?: string;
+    from?:        string;
+    to?:          string;
+    page?:        number;
+    limit?:       number;
+  }) {
+    const {
+      status,
+      reportType,
+      brandId,
+      senderPhone,
+      from,
+      to,
+      page  = 1,
+      limit = 20,
+    } = filters;
 
-    const page = Math.max(1, q.page ?? 1);
-    const limit = Math.min(100, Math.max(1, q.limit ?? 20));
-
-    const qb = this.msgRepo
+    const query = this.msgRepo
       .createQueryBuilder('m')
-      .orderBy('m.received_at', 'DESC');
+      .orderBy('m.received_at', 'DESC')
+      .take(limit)
+      .skip((page - 1) * limit);
 
-    let brandFilter = q.brandId;
-    if (current.role === 'brand_manager') {
-      if (current.brandId == null) {
-        throw new ForbiddenException('Brand manager has no brand');
-      }
-      brandFilter = current.brandId;
-    }
+    if (status)      query.andWhere('m.status = :status',            { status });
+    if (reportType)  query.andWhere('m.report_type = :reportType',   { reportType });
+    if (senderPhone) query.andWhere('m.sender_phone = :senderPhone', { senderPhone });
+    if (from)        query.andWhere('m.received_at >= :from',        { from });
+    if (to)          query.andWhere('m.received_at <= :to',          { to });
 
-    if (brandFilter != null) {
-      qb.andWhere(
-        `EXISTS (SELECT 1 FROM parsed_reports pr WHERE pr.message_id = m.id AND pr.brand_id = :bid)`,
-        { bid: brandFilter },
+    if (brandId) {
+      query.innerJoin(
+        'parsed_reports',
+        'pr',
+        'pr.message_id = m.id AND pr.brand_id = :brandId',
+        { brandId },
       );
     }
 
-    if (q.status) {
-      qb.andWhere('m.status = :st', { st: q.status });
-    }
-    if (q.reportType) {
-      qb.andWhere('m.report_type = :rt', { rt: q.reportType });
-    }
-    if (q.senderPhone?.trim()) {
-      qb.andWhere('m.sender_phone = :sp', { sp: q.senderPhone.trim() });
-    }
-    if (q.from) {
-      qb.andWhere('m.received_at >= :from', { from: new Date(q.from) });
-    }
-    if (q.to) {
-      qb.andWhere('m.received_at <= :to', { to: new Date(q.to) });
-    }
-
-    const total = await qb.clone().getCount();
-    const data = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getMany();
-
+    const [data, total] = await query.getManyAndCount();
     return { data, total, page, limit };
   }
 

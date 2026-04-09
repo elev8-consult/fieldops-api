@@ -41,31 +41,23 @@ export class AnalyticsController {
 
   @Get('reports-by-day')
   @Roles('super_admin', 'brand_manager')
-  reportsByDay(
-    @CurrentUser() current: JwtUser,
+  getReportsByDay(
     @Query('brand_id') brandId?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
+    @Query('from')     from?:    string,
+    @Query('to')       to?:      string,
   ) {
-    return this.analyticsService.reportsByDay(
-      current,
-      brandId != null && brandId !== '' ? parseInt(brandId, 10) : undefined,
-      from,
-      to,
-    );
+    return this.analyticsService.getReportsByDay(brandId, from, to);
   }
 
   @Get('top-flagged-products')
   @Roles('super_admin', 'brand_manager')
-  topFlaggedProducts(
-    @CurrentUser() current: JwtUser,
+  getTopFlaggedProducts(
     @Query('brand_id') brandId?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.analyticsService.topFlaggedProducts(
-      current,
-      brandId != null && brandId !== '' ? parseInt(brandId, 10) : undefined,
-      limit != null && limit !== '' ? parseInt(limit, 10) : 10,
+    return this.analyticsService.getTopFlaggedProducts(
+      brandId,
+      limit ? parseInt(limit, 10) : 10,
     );
   }
 }

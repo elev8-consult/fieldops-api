@@ -22,28 +22,24 @@ export class MessagesController {
   @Get()
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   findAll(
-    @CurrentUser() current: JwtUser,
-    @Query('status') status?: string,
-    @Query('report_type') reportType?: string,
-    @Query('brand_id') brandId?: string,
+    @Query('status')       status?:      string,
+    @Query('report_type')  reportType?:  string,
+    @Query('brand_id')     brandId?:     string,
     @Query('sender_phone') senderPhone?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query('from')         from?:        string,
+    @Query('to')           to?:          string,
+    @Query('page')         page?:        string,
+    @Query('limit')        limit?:       string,
   ) {
-    return this.messagesService.findAll(current, {
+    return this.messagesService.findAll({
       status,
       reportType,
-      brandId:
-        brandId != null && brandId !== ''
-          ? parseInt(brandId, 10)
-          : undefined,
+      brandId,
       senderPhone,
       from,
       to,
-      page: page != null && page !== '' ? parseInt(page, 10) : undefined,
-      limit: limit != null && limit !== '' ? parseInt(limit, 10) : undefined,
+      page:  page  ? parseInt(page,  10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
     });
   }
 
