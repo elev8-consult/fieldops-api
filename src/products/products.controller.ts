@@ -27,20 +27,25 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
-  @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
+  @UseGuards(JwtAuthGuard)
   findAll(
-    @CurrentUser() current: JwtUser,
     @Query('brand_id') brandId?: string,
-    @Query('flow') flow?: string,
-    @Query('search') search?: string,
+    @Query('flow')     flow?:    string,
+    @Query('search')   search?:  string,
+    @Query('page')     page?:    string,
+    @Query('limit')    limit?:   string,
   ) {
-    return this.productsService.findAll(current, {
-      brandId:
-        brandId != null && brandId !== ''
-          ? parseInt(brandId, 10)
-          : undefined,
-      flow,
-      search,
+    const parsedPage  = page  ? parseInt(page,  10) : 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : 100;
+
+    return this.productsService.findAll({
+      brandId: brandId && brandId !== 'NaN' && brandId !== 'undefined'
+        ? brandId
+        : undefined,
+      flow:    flow   || undefined,
+      search:  search || undefined,
+      page:    isNaN(parsedPage)  ? 1   : parsedPage,
+      limit:   isNaN(parsedLimit) ? 100 : parsedLimit,
     });
   }
 

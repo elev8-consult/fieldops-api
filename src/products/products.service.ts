@@ -29,35 +29,66 @@ export class ProductsService {
   }
 
   async findAll(
-    current: JwtUser,
-    filters: { brandId?: number; flow?: string; search?: string },
+    args:
+      | {
+          brandId?: unknown;
+          flow?: string;
+          search?: string;
+          page?: number;
+          limit?: number;
+        }
+      | JwtUser,
+    filters?: { brandId?: unknown; flow?: string; search?: string; page?: number; limit?: number },
   ): Promise<Product[]> {
+    const current =
+      filters === undefined ? null : (args as JwtUser);
+    const f =
+      filters === undefined
+        ? (args as { brandId?: unknown; flow?: string; search?: string; page?: number; limit?: number })
+        : (filters as { brandId?: unknown; flow?: string; search?: string; page?: number; limit?: number });
+
+    const page = Math.max(1, f.page ?? 1);
+    const limit = Math.min(500, Math.max(1, f.limit ?? 100));
+
     const qb = this.productRepo
       .createQueryBuilder('p')
       .leftJoinAndSelect('p.brand', 'brand')
       .where('p.is_active = true')
-      .orderBy('p.canonical_name', 'ASC');
+      .orderBy('p.canonical_name', 'ASC')
+      .take(limit)
+      .skip((page - 1) * limit);
 
-    if (current.role === 'brand_manager') {
+    if (current?.role === 'brand_manager') {
       if (current.brandId == null) {
         throw new ForbiddenException('Brand manager has no brand');
       }
       qb.andWhere('p.brand_id = :bid', { bid: current.brandId });
-    } else if (filters.brandId != null) {
-      qb.andWhere('p.brand_id = :bid', { bid: filters.brandId });
+    } else {
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      const brandId = f.brandId;
+      if (
+        brandId !== null &&
+        brandId !== undefined &&
+        typeof brandId === 'string' &&
+        uuidRegex.test(brandId.trim())
+      ) {
+        qb.andWhere('p.brand_id = :brandId', { brandId: brandId.trim() });
+      }
     }
 
-    if (filters.flow) {
+    if (f.flow) {
       qb.andWhere('(p.flow = :flow OR p.flow = :both)', {
-        flow: filters.flow,
+        flow: f.flow,
         both: 'both',
       });
     }
 
-    if (filters.search?.trim()) {
+    if (f.search?.trim()) {
       qb.andWhere(
         '(p.canonical_name ILIKE :q OR p.sku ILIKE :q)',
-        { q: `%${filters.search.trim()}%` },
+        { q: `%${f.search.trim()}%` },
       );
     }
 
