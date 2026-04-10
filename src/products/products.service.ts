@@ -28,71 +28,65 @@ export class ProductsService {
     }
   }
 
-  async findAll(
-    args:
-      | {
-          brandId?: unknown;
-          flow?: string;
-          search?: string;
-          page?: number;
-          limit?: number;
-        }
-      | JwtUser,
-    filters?: { brandId?: unknown; flow?: string; search?: string; page?: number; limit?: number },
-  ): Promise<Product[]> {
-    const current =
-      filters === undefined ? null : (args as JwtUser);
-    const f =
-      filters === undefined
-        ? (args as { brandId?: unknown; flow?: string; search?: string; page?: number; limit?: number })
-        : (filters as { brandId?: unknown; flow?: string; search?: string; page?: number; limit?: number });
+  async findAll(filters?: {
+    brandId?: string;
+    flow?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const {
+      brandId,
+      flow,
+      search,
+      page = 1,
+      limit = 100,
+    } = filters ?? {};
 
-    const page = Math.max(1, f.page ?? 1);
-    const limit = Math.min(500, Math.max(1, f.limit ?? 100));
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const intRegex = /^\d+$/;
 
-    const qb = this.productRepo
+    // Build base query without any joins.
+    // Joins can cause TypeORM databaseName errors when relation metadata can't be resolved.
+    const query = this.productRepo
       .createQueryBuilder('p')
-      .leftJoinAndSelect('p.brand', 'brand')
       .where('p.is_active = true')
       .orderBy('p.canonical_name', 'ASC')
       .take(limit)
       .skip((page - 1) * limit);
 
-    if (current?.role === 'brand_manager') {
-      if (current.brandId == null) {
-        throw new ForbiddenException('Brand manager has no brand');
-      }
-      qb.andWhere('p.brand_id = :bid', { bid: current.brandId });
-    } else {
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-      const brandId = f.brandId;
-      if (
-        brandId !== null &&
-        brandId !== undefined &&
-        typeof brandId === 'string' &&
-        uuidRegex.test(brandId.trim())
-      ) {
-        qb.andWhere('p.brand_id = :brandId', { brandId: brandId.trim() });
+    // Apply brand filter only if it is a valid UUID or integer string
+    if (brandId && typeof brandId === 'string') {
+      const trimmed = brandId.trim();
+      if (uuidRegex.test(trimmed)) {
+        query.andWhere('p.brand_id = :brandId', { brandId: trimmed });
+      } else if (intRegex.test(trimmed)) {
+        query.andWhere('p.brand_id = :brandId', { brandId: parseInt(trimmed, 10) });
       }
     }
 
-    if (f.flow) {
-      qb.andWhere('(p.flow = :flow OR p.flow = :both)', {
-        flow: f.flow,
-        both: 'both',
+    if (flow && typeof flow === 'string' && flow.length > 0) {
+      query.andWhere('p.flow IN (:...flows)', {
+        flows:
+          flow === 'both'
+            ? ['merchandiser', 'promoter', 'both']
+            : [flow, 'both'],
       });
     }
 
-    if (f.search?.trim()) {
-      qb.andWhere(
-        '(p.canonical_name ILIKE :q OR p.sku ILIKE :q)',
-        { q: `%${f.search.trim()}%` },
-      );
+    if (search && typeof search === 'string' && search.length > 0) {
+      const q = search.trim();
+      if (q.length > 0) {
+        query.andWhere('(p.canonical_name ILIKE :q OR p.sku ILIKE :q)', {
+          q: `%${q}%`,
+        });
+      }
     }
 
-    return qb.getMany();
+    const [data, total] = await query.getManyAndCount();
+
+    return { data, total, page, limit };
   }
 
   async findOne(id: number, current: JwtUser): Promise<Product> {
