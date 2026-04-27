@@ -88,4 +88,24 @@ export class ReviewController {
   ) {
     return this.reviewService.reject(id);
   }
+
+  @Post('items/:itemId/accept-match')
+  acceptMatch(
+    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
+    @Body()
+    body: {
+      productId: string;
+      rawName: string;
+      reportType: 'merchandiser' | 'promoter_sale' | 'promoter_sample';
+    },
+    @CurrentUser() user: any,
+  ) {
+    return this.reviewService.acceptProductMatch(
+      itemId,
+      body.productId,
+      body.rawName,
+      String(user.id),
+      body.reportType,
+    );
+  }
 }

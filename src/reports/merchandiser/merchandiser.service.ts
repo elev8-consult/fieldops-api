@@ -4,9 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuditService } from '../../audit/audit.service';
 import { JwtUser } from '../../common/interfaces/jwt-user.interface';
+import { ProductsService } from '../../products/products.service';
 import { MerchandiserReportItem } from './entities/merchandiser-report-item.entity';
 import { MerchandiserReport } from './entities/merchandiser-report.entity';
 import { UpdateMerchandiserItemDto } from './dto/update-merchandiser-item.dto';
@@ -30,6 +31,8 @@ export class MerchandiserService {
     @InjectRepository(MerchandiserReportItem)
     private readonly itemRepo: Repository<MerchandiserReportItem>,
     private readonly auditService: AuditService,
+    private readonly productsService: ProductsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   private applyBrandFilter(
@@ -101,6 +104,52 @@ export class MerchandiserService {
         throw new ForbiddenException('Out of brand scope');
       }
     }
+
+    const brandId = mr.parsedReport.brandId;
+    const itemMetaRows = await this.dataSource.query<
+      Array<{
+        id: string;
+        match_confidence: number | null;
+        match_type: string | null;
+        is_product_matched: boolean;
+        product_name_raw: string | null;
+      }>
+    >(
+      `SELECT
+         id::text AS id,
+         match_confidence,
+         match_type,
+         is_product_matched,
+         product_name_raw
+       FROM merchandiser_report_items
+       WHERE merchandiser_report_id = $1`,
+      [id],
+    );
+    const itemMetaMap = new Map(itemMetaRows.map((r) => [r.id, r]));
+
+    if (brandId != null) {
+      for (const item of mr.items) {
+        const meta = itemMetaMap.get(String(item.id));
+        (item as unknown as { matchConfidence?: number | null }).matchConfidence =
+          meta?.match_confidence ?? null;
+        (item as unknown as { matchType?: string | null }).matchType =
+          meta?.match_type ?? null;
+        const rawName = meta?.product_name_raw ?? item.productNameRaw ?? '';
+        const isMatched = meta?.is_product_matched ?? item.isProductMatched;
+
+        if (!isMatched && rawName.trim().length > 0) {
+          const match = await this.productsService.fuzzyMatchProduct(
+            String(brandId),
+            rawName,
+          );
+          (item as unknown as { matchSuggestions?: unknown[] }).matchSuggestions =
+            match.suggestions.slice(0, 3);
+        } else {
+          (item as unknown as { matchSuggestions?: unknown[] }).matchSuggestions = [];
+        }
+      }
+    }
+
     return mr;
   }
 

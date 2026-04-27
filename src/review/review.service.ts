@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ParsedReport } from './entities/parsed-report.entity';
 import { ReportFlag }   from './entities/report-flag.entity';
+import { ProductsService } from '../products/products.service';
 
 @Injectable()
 export class ReviewService {
@@ -17,6 +18,7 @@ export class ReviewService {
     @InjectRepository(ReportFlag)
     private flagsRepo: Repository<ReportFlag>,
     private dataSource: DataSource,
+    private productsService: ProductsService,
   ) {}
 
   // ── Review Queue ──────────────────────────────────────────────────
@@ -109,20 +111,24 @@ export class ReviewService {
     if (report.reportType === 'merchandiser') {
       const rows = await this.dataSource.query(
         `SELECT
-           mr.id, mr.promo_type, mr.notes,
+           mr.id,
+           mr.promo_type AS "promoType",
+           mr.notes,
            COALESCE(
              json_agg(json_build_object(
-               'id',                 mri.id,
-               'product_name_raw',   mri.product_name_raw,
-               'product_id',         mri.product_id,
-               'quantity',           mri.quantity,
-               'expiry_date',        mri.expiry_date,
-               'expiry_raw',         mri.expiry_raw,
-               'is_product_matched', mri.is_product_matched
+               'id',               mri.id,
+               'productNameRaw',   mri.product_name_raw,
+               'productId',        mri.product_id,
+               'quantity',         mri.quantity,
+               'expiryDate',       mri.expiry_date,
+               'expiryRaw',        mri.expiry_raw,
+               'isProductMatched', mri.is_product_matched,
+               'matchConfidence',  mri.match_confidence,
+               'matchType',        mri.match_type
              ) ORDER BY mri.created_at)
              FILTER (WHERE mri.id IS NOT NULL),
              '[]'
-           ) AS items
+           ) AS "items"
          FROM merchandiser_reports mr
          LEFT JOIN merchandiser_report_items mri
            ON mri.merchandiser_report_id = mr.id
@@ -131,44 +137,94 @@ export class ReviewService {
         [id],
       );
       reportData = rows[0] ?? null;
+
+      const merchData = reportData as { items?: any[] } | null;
+      if (merchData && Array.isArray(merchData.items) && report.brandId != null) {
+        for (const item of merchData.items) {
+          const isMatched = Boolean(item?.isProductMatched);
+          const rawName =
+            typeof item?.productNameRaw === 'string' ? item.productNameRaw : '';
+          if (!isMatched && rawName.trim().length > 0) {
+            const match = await this.productsService.fuzzyMatchProduct(
+              String(report.brandId),
+              rawName,
+            );
+            item.matchSuggestions = match.suggestions.slice(0, 3);
+          } else {
+            item.matchSuggestions = [];
+          }
+        }
+      }
     }
 
     if (report.reportType === 'promoter') {
       const rows = await this.dataSource.query(
         `SELECT
-           pr.id, pr.promo_stand_placement, pr.persons_contacted,
-           pr.persons_tasted, pr.feedback_text, pr.most_asked_question,
-           pr.questions_answers,
+           pr.id,
+           pr.promo_stand_placement AS "promoStandPlacement",
+           pr.persons_contacted AS "personsContacted",
+           pr.persons_tasted AS "personsTasted",
+           pr.feedback_text AS "feedbackText",
+           pr.most_asked_question AS "mostAskedQuestion",
+           pr.questions_answers AS "questionsAnswers",
            COALESCE(
              (SELECT json_agg(json_build_object(
-               'id',                 s.id,
-               'product_name_raw',   s.product_name_raw,
-               'product_id',         s.product_id,
-               'quantity',           s.quantity,
-               'promo_label',        s.promo_label,
-               'is_offer',           s.is_offer,
-               'is_product_matched', s.is_product_matched
+               'id',               s.id,
+               'productNameRaw',   s.product_name_raw,
+               'productId',        s.product_id,
+               'quantity',         s.quantity,
+               'promoLabel',       s.promo_label,
+               'isOffer',          s.is_offer,
+               'isProductMatched', s.is_product_matched,
+               'matchConfidence',  s.match_confidence,
+               'matchType',        s.match_type
              ) ORDER BY s.created_at)
              FROM promoter_sale_items s WHERE s.promoter_report_id = pr.id),
              '[]'
-           ) AS sales,
+           ) AS "sales",
            COALESCE(
              (SELECT json_agg(json_build_object(
-               'id',                 si.id,
-               'product_name_raw',   si.product_name_raw,
-               'product_id',         si.product_id,
-               'quantity',           si.quantity,
-               'availability_note',  si.availability_note,
-               'is_product_matched', si.is_product_matched
+               'id',               si.id,
+               'productNameRaw',   si.product_name_raw,
+               'productId',        si.product_id,
+               'quantity',         si.quantity,
+               'availabilityNote', si.availability_note,
+               'isProductMatched', si.is_product_matched,
+               'matchConfidence',  si.match_confidence,
+               'matchType',        si.match_type
              ) ORDER BY si.created_at)
              FROM promoter_sample_items si WHERE si.promoter_report_id = pr.id),
              '[]'
-           ) AS samples
+           ) AS "samples"
          FROM promoter_reports pr
          WHERE pr.report_id = $1`,
         [id],
       );
       reportData = rows[0] ?? null;
+
+      if (reportData && report.brandId != null) {
+        const enrichList = async (list: any[]) => {
+          if (!Array.isArray(list)) return;
+          for (const item of list) {
+            const isMatched = Boolean(item?.isProductMatched);
+            const rawName =
+              typeof item?.productNameRaw === 'string' ? item.productNameRaw : '';
+            if (!isMatched && rawName.trim().length > 0) {
+              const match = await this.productsService.fuzzyMatchProduct(
+                String(report.brandId),
+                rawName,
+              );
+              item.matchSuggestions = match.suggestions.slice(0, 3);
+            } else {
+              item.matchSuggestions = [];
+            }
+          }
+        };
+
+        const promoterData = reportData as { sales?: any[]; samples?: any[] };
+        await enrichList(promoterData.sales ?? []);
+        await enrichList(promoterData.samples ?? []);
+      }
     }
 
     return {
@@ -295,6 +351,76 @@ export class ReviewService {
     return this.flagsRepo.findOne({
       where: { id: flagId as unknown as ReportFlag['id'] },
     });
+  }
+
+  async acceptProductMatch(
+    itemId: string,
+    productId: string,
+    rawName: string,
+    userId: string,
+    reportType: 'merchandiser' | 'promoter_sale' | 'promoter_sample',
+  ): Promise<{ success: boolean; aliasCreated: boolean }> {
+    const tableName =
+      reportType === 'merchandiser'
+        ? 'merchandiser_report_items'
+        : reportType === 'promoter_sale'
+          ? 'promoter_sale_items'
+          : 'promoter_sample_items';
+
+    await this.dataSource.query(
+      `UPDATE ${tableName}
+       SET product_id = $1,
+           is_product_matched = true,
+           match_type = 'fuzzy_confirmed',
+           match_confidence = 1.0
+       WHERE id::text = $2`,
+      [productId, itemId],
+    );
+
+    let aliasCreated = false;
+    const normalizedRaw = rawName.trim().toLowerCase();
+
+    const existing = await this.dataSource.query(
+      `SELECT id FROM product_aliases WHERE lower(alias) = lower($1) LIMIT 1`,
+      [normalizedRaw],
+    );
+
+    if (existing.length === 0) {
+      await this.dataSource.query(
+        `INSERT INTO product_aliases (product_id, alias, created_by, created_at)
+         VALUES ($1, $2, $3, now())`,
+        [productId, normalizedRaw, userId],
+      );
+      aliasCreated = true;
+    }
+
+    const parentJoin =
+      reportType === 'merchandiser'
+        ? 'ri.merchandiser_report_id = mr.id'
+        : 'ri.promoter_report_id = pr_r.id';
+
+    const parentTables =
+      reportType === 'merchandiser'
+        ? 'merchandiser_reports mr JOIN parsed_reports pr ON pr.id = mr.report_id'
+        : 'promoter_reports pr_r JOIN parsed_reports pr ON pr.id = pr_r.report_id';
+
+    await this.dataSource.query(
+      `UPDATE report_flags rf
+       SET status = 'resolved',
+           resolved_by = $1,
+           resolved_at = now()
+       FROM ${tableName} ri
+       JOIN ${parentTables}
+         ON ${parentJoin}
+       WHERE ri.id::text = $2
+         AND rf.report_id = pr.id
+         AND rf.flag_code = 'UNRECOGNIZED_PRODUCT'
+         AND rf.status = 'open'
+         AND rf.message ILIKE $3`,
+      [userId, itemId, `%${rawName}%`],
+    );
+
+    return { success: true, aliasCreated };
   }
 
   // ── Get Queue Count (for sidebar badge) ──────────────────────────

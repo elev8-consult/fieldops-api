@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ProductsModule } from '../products/products.module';
 import { MerchandiserReportItem } from './merchandiser/entities/merchandiser-report-item.entity';
 import { MerchandiserReport } from './merchandiser/entities/merchandiser-report.entity';
 import { MerchandiserController } from './merchandiser/merchandiser.controller';
@@ -12,6 +13,7 @@ import { PromoterService } from './promoter/promoter.service';
 
 @Module({
   imports: [
+    ProductsModule,
     TypeOrmModule.forFeature([
       MerchandiserReport,
       MerchandiserReportItem,
