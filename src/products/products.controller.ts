@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -82,18 +81,6 @@ export class ProductsController {
       dto,
       current,
     );
-  }
-
-  /**
-   * POST /api/products/match
-   * Called by n8n after extraction to fuzzy-match product names.
-   */
-  @Post('match')
-  @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
-  matchProducts(
-    @Body() body: { brandId: string; items: { product_name_raw: string }[] },
-  ) {
-    return this.productsService.matchProductBatch(body.brandId, body.items ?? []);
   }
 
   @Get(':id')
