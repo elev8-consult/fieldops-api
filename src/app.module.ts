@@ -6,6 +6,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandsModule } from './brands/brands.module';
 import { typeOrmConfigFactory } from './config/database.config';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { MessagesModule } from './messages/messages.module';
 import { OutletsModule } from './outlets/outlets.module';
 import { ProductsModule } from './products/products.module';
@@ -25,6 +26,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuthModule,
     BrandsModule,
+    DashboardModule,
     OutletsModule,
     ProductsModule,
     MessagesModule,
