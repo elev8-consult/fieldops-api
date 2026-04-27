@@ -1,11 +1,9 @@
-import { Type } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsOptional, Min } from 'class-validator';
+import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class MerchandiserDashboardQueryDto {
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  brandId: number;
+  @IsString()
+  @IsNotEmpty()
+  brandId: string;
 
   @IsOptional()
   @IsDateString()

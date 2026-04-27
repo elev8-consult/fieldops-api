@@ -50,15 +50,15 @@ interface MerchandiserDashboardResponse {
 export class DashboardService {
   constructor(private readonly dataSource: DataSource) {}
 
-  private resolveBrandId(current: JwtUser, requestedBrandId: number): number {
+  private resolveBrandId(current: JwtUser, requestedBrandId: string): string {
     if (current.role === 'brand_manager') {
       if (current.brandId == null) {
         throw new ForbiddenException('Brand manager has no brand');
       }
-      if (current.brandId !== requestedBrandId) {
+      if (String(current.brandId) !== requestedBrandId) {
         throw new ForbiddenException('Out of brand scope');
       }
-      return current.brandId;
+      return String(current.brandId);
     }
     return requestedBrandId;
   }
@@ -108,14 +108,14 @@ export class DashboardService {
     const dateRange = this.resolveDateRange(query.dateFrom, query.dateTo);
 
     const [brand] = await this.dataSource.query<
-      Array<{ id: number; name: string; slug: string }>
+      Array<{ id: string | number; name: string; slug: string }>
     >('SELECT id, name, slug FROM brands WHERE id = $1', [brandId]);
     if (!brand) {
       throw new NotFoundException('Brand not found');
     }
 
     const products = await this.dataSource.query<
-      Array<{ id: number; name: string }>
+      Array<{ id: string | number; name: string }>
     >(
       `
       SELECT p.id, p.canonical_name AS name
@@ -130,17 +130,17 @@ export class DashboardService {
 
     const itemRows = await this.dataSource.query<
       Array<{
-        outlet_id: number;
+        outlet_id: string | number;
         outlet_name: string;
         is_depot: boolean;
-        product_id: number;
+        product_id: string | number;
         quantity: number | null;
         expiry_date: string | null;
         expiry_raw: string | null;
         report_date: string;
-        report_id: number;
+        report_id: string | number;
         status: DashboardStatus;
-        report_item_id: number;
+        report_item_id: string;
       }>
     >(
       `
@@ -184,7 +184,7 @@ export class DashboardService {
 
     const reportItemIds = itemRows.map((row) => row.report_item_id);
     let batchRows: Array<{
-      report_item_id: number;
+      report_item_id: string;
       quantity: number | null;
       expiry_date: string | null;
       expiry_raw: string | null;
@@ -194,7 +194,7 @@ export class DashboardService {
       try {
         batchRows = await this.dataSource.query<
           Array<{
-            report_item_id: number;
+            report_item_id: string;
             quantity: number | null;
             expiry_date: string | null;
             expiry_raw: string | null;
@@ -202,12 +202,12 @@ export class DashboardService {
         >(
           `
           SELECT
-            report_item_id,
+            report_item_id::text AS report_item_id,
             quantity,
             expiry_date,
             expiry_raw
           FROM merchandiser_report_item_batches
-          WHERE report_item_id = ANY($1::int[])
+          WHERE report_item_id::text = ANY($1::text[])
           ORDER BY report_item_id, expiry_date NULLS LAST, created_at ASC
           `,
           [reportItemIds],
@@ -217,7 +217,7 @@ export class DashboardService {
       }
     }
 
-    const batchesByItemId = new Map<number, DashboardBatch[]>();
+    const batchesByItemId = new Map<string, DashboardBatch[]>();
     for (const batch of batchRows) {
       const currentBatches = batchesByItemId.get(batch.report_item_id) ?? [];
       currentBatches.push({
@@ -228,9 +228,11 @@ export class DashboardService {
       batchesByItemId.set(batch.report_item_id, currentBatches);
     }
 
-    const rowsByOutletId = new Map<number, DashboardRow>();
+    const rowsByOutletId = new Map<string, DashboardRow>();
     for (const row of itemRows) {
-      const existing = rowsByOutletId.get(row.outlet_id) ?? {
+      const outletId = String(row.outlet_id);
+      const productId = String(row.product_id);
+      const existing = rowsByOutletId.get(outletId) ?? {
         outletId: String(row.outlet_id),
         outletName: row.outlet_name,
         isDepot: row.is_depot,
@@ -249,7 +251,7 @@ export class DashboardService {
               },
             ];
 
-      existing.cells[String(row.product_id)] = {
+      existing.cells[productId] = {
         quantity: row.quantity,
         reportDate: row.report_date,
         reportId: String(row.report_id),
@@ -259,7 +261,7 @@ export class DashboardService {
         batches: fallbackBatch,
         status: row.status,
       };
-      rowsByOutletId.set(row.outlet_id, existing);
+      rowsByOutletId.set(outletId, existing);
     }
 
     const rows = Array.from(rowsByOutletId.values()).sort((a, b) =>
