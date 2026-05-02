@@ -9,8 +9,12 @@ export class ProductsInternalController {
   @Post('match')
   @UseGuards(InternalApiKeyGuard)
   matchProducts(
-    @Body() body: { brandId: string; items: { product_name_raw: string }[] },
+    @Body() body: { brandId?: string; brandRaw?: string; items: { product_name_raw: string }[] },
   ) {
-    return this.productsService.matchProductBatch(body.brandId, body.items ?? []);
+    return this.productsService.matchProductBatch(
+      body.brandId ?? '',
+      body.items ?? [],
+      body.brandRaw,
+    );
   }
 }

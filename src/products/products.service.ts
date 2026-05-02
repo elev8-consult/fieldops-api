@@ -177,9 +177,27 @@ export class ProductsService {
     };
   }
 
+  private async resolveBrandId(brandRaw: string): Promise<string | null> {
+    const trimmed = brandRaw.trim();
+    if (!trimmed) return null;
+
+    const exact = await this.dataSource.query<{ id: string }[]>(
+      `SELECT id::text FROM brands WHERE lower(name) = lower($1) AND is_active = true LIMIT 1`,
+      [trimmed],
+    );
+    if (exact.length > 0) return exact[0].id;
+
+    const fuzzy = await this.dataSource.query<{ id: string }[]>(
+      `SELECT id::text FROM brands WHERE name ILIKE $1 AND is_active = true LIMIT 1`,
+      [`%${trimmed}%`],
+    );
+    return fuzzy.length > 0 ? fuzzy[0].id : null;
+  }
+
   async matchProductBatch(
     brandId: string,
     items: Array<{ product_name_raw: string }>,
+    brandRaw?: string,
   ): Promise<
     Array<{
       product_name_raw: string;
@@ -194,9 +212,14 @@ export class ProductsService {
       }>;
     }>
   > {
+    let resolvedBrandId = brandId;
+    if ((!resolvedBrandId || resolvedBrandId.trim() === '') && brandRaw) {
+      resolvedBrandId = (await this.resolveBrandId(brandRaw)) ?? '';
+    }
+
     const results = await Promise.all(
       items.map(async (item) => {
-        const match = await this.fuzzyMatchProduct(brandId, item.product_name_raw);
+        const match = await this.fuzzyMatchProduct(resolvedBrandId, item.product_name_raw);
         return {
           product_name_raw: item.product_name_raw,
           product_id: match.productId,
