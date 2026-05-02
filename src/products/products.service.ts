@@ -103,24 +103,36 @@ export class ProductsService {
          SELECT
            p.id::text AS product_id,
            p.canonical_name,
-           similarity(lower(p.canonical_name), lower($2)) AS sim,
+           greatest(
+             similarity(lower(p.canonical_name), lower($2)),
+             word_similarity(lower($2), lower(p.canonical_name))
+           ) AS sim,
            'canonical' AS source
          FROM products p
          WHERE p.brand_id::text = $1
            AND p.is_active = true
-           AND similarity(lower(p.canonical_name), lower($2)) > 0.25
+           AND greatest(
+             similarity(lower(p.canonical_name), lower($2)),
+             word_similarity(lower($2), lower(p.canonical_name))
+           ) > 0.2
        ),
        alias_sims AS (
          SELECT
            p.id::text AS product_id,
            p.canonical_name,
-           similarity(lower(pa.alias), lower($2)) AS sim,
+           greatest(
+             similarity(lower(pa.alias), lower($2)),
+             word_similarity(lower($2), lower(pa.alias))
+           ) AS sim,
            'alias' AS source
          FROM product_aliases pa
          JOIN products p ON p.id = pa.product_id
          WHERE p.brand_id::text = $1
            AND p.is_active = true
-           AND similarity(lower(pa.alias), lower($2)) > 0.25
+           AND greatest(
+             similarity(lower(pa.alias), lower($2)),
+             word_similarity(lower($2), lower(pa.alias))
+           ) > 0.2
        ),
        all_sims AS (
          SELECT * FROM canonical_sims
@@ -158,7 +170,7 @@ export class ProductsService {
       confidence: parseFloat(String(r.sim)),
     }));
 
-    if (confidence >= 0.55) {
+    if (confidence >= 0.45) {
       return {
         productId: best.product_id,
         canonicalName: best.canonical_name,
