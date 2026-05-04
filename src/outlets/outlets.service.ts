@@ -20,7 +20,7 @@ export class OutletsService {
   async findAll(
     current: JwtUser,
     filters: {
-      regionId?: number;
+      regionId?: string;
       isDepot?: boolean;
       search?: string;
     },
@@ -48,7 +48,7 @@ export class OutletsService {
     return qb.getMany();
   }
 
-  async findOne(id: number, current: JwtUser): Promise<Outlet> {
+  async findOne(id: string, current: JwtUser): Promise<Outlet> {
     if (current.role === 'promoter' || current.role === 'merchandiser') {
       throw new ForbiddenException();
     }
@@ -75,7 +75,7 @@ export class OutletsService {
     return this.outletRepo.save(outlet);
   }
 
-  async update(id: number, dto: UpdateOutletDto): Promise<Outlet> {
+  async update(id: string, dto: UpdateOutletDto): Promise<Outlet> {
     const outlet = await this.outletRepo.findOne({ where: { id } });
     if (!outlet) {
       throw new NotFoundException('Outlet not found');
@@ -89,7 +89,7 @@ export class OutletsService {
     return this.outletRepo.save(outlet);
   }
 
-  async softDelete(id: number): Promise<void> {
+  async softDelete(id: string): Promise<void> {
     const outlet = await this.outletRepo.findOne({ where: { id } });
     if (!outlet) {
       throw new NotFoundException('Outlet not found');

@@ -1,6 +1,6 @@
 export interface JwtUser {
-  id: number;
+  id: string;
   email: string;
   role: string;
-  brandId: number | null;
+  brandId: string | null;
 }

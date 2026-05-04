@@ -35,7 +35,7 @@ export class BrandsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.brandsService.findOne(id as unknown as number, current);
+    return this.brandsService.findOne(id, current);
   }
 
   @Post()
@@ -50,12 +50,12 @@ export class BrandsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateBrandDto,
   ) {
-    return this.brandsService.update(id as unknown as number, dto);
+    return this.brandsService.update(id, dto);
   }
 
   @Delete(':id')
   @Roles('super_admin')
   remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.brandsService.softDelete(id as unknown as number);
+    return this.brandsService.softDelete(id);
   }
 }

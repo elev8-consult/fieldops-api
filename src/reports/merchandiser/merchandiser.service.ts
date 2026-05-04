@@ -14,8 +14,8 @@ import { UpdateMerchandiserItemDto } from './dto/update-merchandiser-item.dto';
 import { UpdateMerchandiserReportDto } from './dto/update-merchandiser-report.dto';
 
 export interface MerchListQuery {
-  brandId?: number;
-  outletId?: number;
+  brandId?: string;
+  outletId?: string;
   from?: string;
   to?: string;
   status?: string;
@@ -38,7 +38,7 @@ export class MerchandiserService {
   private applyBrandFilter(
     current: JwtUser,
     qb: SelectQueryBuilder<MerchandiserReport>,
-    brandParam?: number,
+    brandParam?: string,
   ) {
     if (current.role === 'brand_manager') {
       if (current.brandId == null) {
@@ -85,7 +85,7 @@ export class MerchandiserService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: number, current: JwtUser): Promise<MerchandiserReport> {
+  async findOne(id: string, current: JwtUser): Promise<MerchandiserReport> {
     const mr = await this.mrRepo.findOne({
       where: { id },
       relations: [
@@ -154,7 +154,7 @@ export class MerchandiserService {
   }
 
   async updateReport(
-    id: number,
+    id: string,
     dto: UpdateMerchandiserReportDto,
     current: JwtUser,
   ): Promise<MerchandiserReport> {
@@ -198,8 +198,8 @@ export class MerchandiserService {
   }
 
   async updateItem(
-    reportId: number,
-    itemId: number,
+    reportId: string,
+    itemId: string,
     dto: UpdateMerchandiserItemDto,
     current: JwtUser,
   ): Promise<MerchandiserReportItem> {

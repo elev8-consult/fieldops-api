@@ -11,9 +11,9 @@ export class AuditService {
   ) {}
 
   async log(
-    userId: number | null,
+    userId: string | null,
     entityType: string,
-    entityId: number,
+    entityId: string,
     action: string,
     fieldName?: string | null,
     oldValue?: string | null,

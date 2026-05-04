@@ -23,6 +23,7 @@ export class ReviewController {
     @Query('brand_id')    brandId?:    string,
     @Query('report_type') reportType?: string,
     @Query('status')      status?:     string,
+    @Query('search')      search?:     string,
     @Query('page')        page?:       string,
     @Query('limit')       limit?:      string,
   ) {
@@ -33,6 +34,7 @@ export class ReviewController {
       brandId:    brandId    || undefined,
       reportType: reportType || undefined,
       status:     status     || undefined,
+      search:     search     || undefined,
       page:       isNaN(parsedPage)  ? 1  : parsedPage,
       limit:      isNaN(parsedLimit) ? 20 : parsedLimit,
     });

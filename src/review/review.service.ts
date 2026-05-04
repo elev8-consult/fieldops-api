@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -26,6 +25,7 @@ export class ReviewService {
     brandId?:    string;
     reportType?: string;
     status?:     string;
+    search?:     string;
     page?:       number;
     limit?:      number;
   }) {
@@ -33,6 +33,7 @@ export class ReviewService {
       brandId,
       reportType,
       status = 'flagged',
+      search,
       page   = 1,
       limit  = 20,
     } = filters;
@@ -46,6 +47,12 @@ export class ReviewService {
 
     if (brandId)    query.andWhere('r.brand_id = :brandId',       { brandId });
     if (reportType) query.andWhere('r.report_type = :reportType', { reportType });
+    if (search?.trim()) {
+      query.andWhere(
+        `(COALESCE(r.location_raw, '') ILIKE :search OR COALESCE(r.name_raw, '') ILIKE :search)`,
+        { search: `%${search.trim()}%` },
+      );
+    }
 
     const [reports, total] = await query.getManyAndCount();
 
@@ -69,19 +76,13 @@ export class ReviewService {
 
   // ── Single Report with all details ───────────────────────────────
   async getReport(id: string) {
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
-      throw new BadRequestException(`Invalid report ID format: "${id}"`);
-    }
-
   const report = await this.reportsRepo.findOne({
-    where: { id: id as unknown as ParsedReport['id'] },
+    where: { id },
   });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
 
   const flags = await this.flagsRepo.find({
-    where: { reportId: id as unknown as ReportFlag['reportId'] },
+    where: { reportId: id },
     order: { createdAt: 'DESC' },
   });
 
@@ -238,20 +239,20 @@ export class ReviewService {
   }
 
   // ── Approve Report ────────────────────────────────────────────────
-  async approve(id: string, userId: number) {
+  async approve(id: string, userId: string) {
     const report = await this.reportsRepo.findOne({
-      where: { id: id as unknown as ParsedReport['id'] },
+      where: { id },
     });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
 
     await this.reportsRepo.update(
-      { id: id as unknown as ParsedReport['id'] },
+      { id },
       { status: 'approved' },
     );
 
     const openFlags = await this.flagsRepo.find({
       where: {
-        reportId: id as unknown as ReportFlag['reportId'],
+        reportId: id,
         status: 'open',
       },
     });
@@ -272,12 +273,12 @@ export class ReviewService {
   // ── Reject Report ─────────────────────────────────────────────────
   async reject(id: string) {
     const report = await this.reportsRepo.findOne({
-      where: { id: id as unknown as ParsedReport['id'] },
+      where: { id },
     });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
 
     await this.reportsRepo.update(
-      { id: id as unknown as ParsedReport['id'] },
+      { id },
       { status: 'rejected' },
     );
 
@@ -287,14 +288,14 @@ export class ReviewService {
   // ── Update Report Fields ──────────────────────────────────────────
   async update(id: string, data: Partial<ParsedReport>) {
     const report = await this.reportsRepo.findOne({
-      where: { id: id as unknown as ParsedReport['id'] },
+      where: { id },
     });
     if (!report) throw new NotFoundException(`Report ${id} not found`);
 
     const { id: _id, createdAt: _c, ...updateData } = data as any;
 
     await this.reportsRepo.update(
-      { id: id as unknown as ParsedReport['id'] },
+      { id },
       {
         ...updateData,
         status: 'pending_review',
@@ -302,7 +303,7 @@ export class ReviewService {
     );
 
     const updated = await this.reportsRepo.findOne({
-      where: { id: id as unknown as ParsedReport['id'] },
+      where: { id },
       relations: ['brand', 'outlet', 'flags', 'reportedBy'],
     });
     if (!updated) {
@@ -312,14 +313,14 @@ export class ReviewService {
   }
 
   // ── Resolve Flag ──────────────────────────────────────────────────
-  async resolveFlag(flagId: string, userId: number) {
+  async resolveFlag(flagId: string, userId: string) {
     const flag = await this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
+      where: { id: flagId },
     });
     if (!flag) throw new NotFoundException(`Flag ${flagId} not found`);
 
     await this.flagsRepo.update(
-      { id: flagId as unknown as ReportFlag['id'] },
+      { id: flagId },
       {
         status:       'resolved',
         resolvedById: userId,
@@ -328,19 +329,19 @@ export class ReviewService {
     );
 
     return this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
+      where: { id: flagId },
     });
   }
 
   // ── Dismiss Flag ──────────────────────────────────────────────────
-  async dismissFlag(flagId: string, userId: number) {
+  async dismissFlag(flagId: string, userId: string) {
     const flag = await this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
+      where: { id: flagId },
     });
     if (!flag) throw new NotFoundException(`Flag ${flagId} not found`);
 
     await this.flagsRepo.update(
-      { id: flagId as unknown as ReportFlag['id'] },
+      { id: flagId },
       {
         status:       'dismissed',
         resolvedById: userId,
@@ -349,7 +350,7 @@ export class ReviewService {
     );
 
     return this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
+      where: { id: flagId },
     });
   }
 
@@ -373,7 +374,7 @@ export class ReviewService {
            is_product_matched = true,
            match_type = 'fuzzy_confirmed',
            match_confidence = 1.0
-       WHERE id::text = $2`,
+       WHERE id = $2`,
       [productId, itemId],
     );
 
@@ -412,7 +413,7 @@ export class ReviewService {
        FROM ${tableName} ri
        JOIN ${parentTables}
          ON ${parentJoin}
-       WHERE ri.id::text = $2
+       WHERE ri.id = $2
          AND rf.report_id = pr.id
          AND rf.flag_code = 'UNRECOGNIZED_PRODUCT'
          AND rf.status = 'open'
@@ -430,10 +431,7 @@ export class ReviewService {
       .where('r.status = :status', { status: 'flagged' });
 
     if (brandId) {
-      const bid = parseInt(brandId, 10);
-      if (!Number.isNaN(bid)) {
-        query.andWhere('r.brand_id = :brandId', { brandId: bid });
-      }
+      query.andWhere('r.brand_id = :brandId', { brandId });
     }
 
     return query.getCount();

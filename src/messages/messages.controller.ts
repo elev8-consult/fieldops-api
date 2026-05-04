@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Query,
   UseGuards,
@@ -52,6 +51,6 @@ export class MessagesController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.messagesService.findOne(id as unknown as number, current);
+    return this.messagesService.findOne(id, current);
   }
 }

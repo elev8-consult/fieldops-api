@@ -61,7 +61,7 @@ export class MessagesService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: number, current: JwtUser): Promise<WhatsappMessage> {
+  async findOne(id: string, current: JwtUser): Promise<WhatsappMessage> {
     if (current.role === 'promoter' || current.role === 'merchandiser') {
       throw new ForbiddenException();
     }

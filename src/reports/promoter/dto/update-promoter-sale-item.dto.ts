@@ -1,12 +1,11 @@
-import { IsBoolean, IsInt, IsOptional, IsString, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdatePromoterSaleItemDto {
   @IsOptional()
   @ValidateIf((_, v) => v !== undefined)
-  @Type(() => Number)
-  @IsInt()
-  productId?: number | null;
+  @IsUUID('4')
+  productId?: string | null;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== undefined)

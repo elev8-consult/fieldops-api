@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Query,
@@ -37,14 +36,8 @@ export class PromoterController {
     @Query('limit') limit?: string,
   ) {
     return this.promoterService.list(current, {
-      brandId:
-        brandId != null && brandId !== ''
-          ? parseInt(brandId, 10)
-          : undefined,
-      outletId:
-        outletId != null && outletId !== ''
-          ? parseInt(outletId, 10)
-          : undefined,
+      brandId: brandId || undefined,
+      outletId: outletId || undefined,
       from,
       to,
       status,
@@ -59,7 +52,7 @@ export class PromoterController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.promoterService.findOne(id as unknown as number, current);
+    return this.promoterService.findOne(id, current);
   }
 
   @Patch(':id')
@@ -70,7 +63,7 @@ export class PromoterController {
     @CurrentUser() current: JwtUser,
   ) {
     return this.promoterService.updateReport(
-      id as unknown as number,
+      id,
       dto,
       current,
     );
@@ -85,8 +78,8 @@ export class PromoterController {
     @CurrentUser() current: JwtUser,
   ) {
     return this.promoterService.updateSaleItem(
-      id as unknown as number,
-      itemId as unknown as number,
+      id,
+      itemId,
       dto,
       current,
     );
@@ -101,8 +94,8 @@ export class PromoterController {
     @CurrentUser() current: JwtUser,
   ) {
     return this.promoterService.updateSampleItem(
-      id as unknown as number,
-      itemId as unknown as number,
+      id,
+      itemId,
       dto,
       current,
     );

@@ -1,12 +1,10 @@
-import { IsIn, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsIn, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 const FLOWS = ['merchandiser', 'promoter', 'both'] as const;
 
 export class CreateProductDto {
-  @Type(() => Number)
-  @IsInt()
-  brandId: number;
+  @IsUUID('4')
+  brandId: string;
 
   @IsString()
   @MinLength(1)

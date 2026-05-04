@@ -11,8 +11,8 @@ import { Region } from './region.entity';
 
 @Entity('outlets')
 export class Outlet {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ type: 'varchar', length: 255 })
   name: string;
@@ -23,8 +23,8 @@ export class Outlet {
   @Column({ name: 'is_depot', type: 'boolean', default: false })
   isDepot: boolean;
 
-  @Column({ name: 'region_id', type: 'int' })
-  regionId: number;
+  @Column({ name: 'region_id', type: 'uuid', nullable: true })
+  regionId: string | null;
 
   @ManyToOne(() => Region)
   @JoinColumn({ name: 'region_id' })

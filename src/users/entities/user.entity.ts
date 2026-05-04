@@ -11,8 +11,8 @@ import { Brand } from '../../brands/entities/brand.entity';
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ name: 'full_name', type: 'varchar', length: 255 })
   fullName: string;
@@ -29,8 +29,8 @@ export class User {
   @Column({ type: 'varchar', length: 32 })
   role: string;
 
-  @Column({ name: 'brand_id', type: 'int', nullable: true })
-  brandId: number | null;
+  @Column({ name: 'brand_id', type: 'uuid', nullable: true })
+  brandId: string | null;
 
   @ManyToOne(() => Brand, { nullable: true })
   @JoinColumn({ name: 'brand_id' })

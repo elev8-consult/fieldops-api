@@ -54,10 +54,7 @@ export class ProductsController {
     @Param('aliasId', new ParseUUIDPipe({ version: '4' })) aliasId: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.removeAlias(
-      aliasId as unknown as number,
-      current,
-    );
+    return this.productsService.removeAlias(aliasId, current);
   }
 
   @Get(':id/aliases')
@@ -66,7 +63,7 @@ export class ProductsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.listAliases(id as unknown as number, current);
+    return this.productsService.listAliases(id, current);
   }
 
   @Post(':id/aliases')
@@ -76,11 +73,7 @@ export class ProductsController {
     @Body() dto: CreateAliasDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.addAlias(
-      id as unknown as number,
-      dto,
-      current,
-    );
+    return this.productsService.addAlias(id, dto, current);
   }
 
   @Get(':id')
@@ -89,7 +82,7 @@ export class ProductsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.findOne(id as unknown as number, current);
+    return this.productsService.findOne(id, current);
   }
 
   @Post()
@@ -105,7 +98,7 @@ export class ProductsController {
     @Body() dto: UpdateProductDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.update(id as unknown as number, dto, current);
+    return this.productsService.update(id, dto, current);
   }
 
   @Delete(':id')
@@ -114,6 +107,6 @@ export class ProductsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.productsService.softDelete(id as unknown as number, current);
+    return this.productsService.softDelete(id, current);
   }
 }

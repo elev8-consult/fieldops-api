@@ -44,10 +44,10 @@ export class AuditController {
       qb.andWhere('a.entity_type = :et', { et: entityType });
     }
     if (entityId != null && entityId !== '') {
-      qb.andWhere('a.entity_id = :eid', { eid: parseInt(entityId, 10) });
+      qb.andWhere('a.entity_id = :eid', { eid: entityId });
     }
     if (userId != null && userId !== '') {
-      qb.andWhere('a.user_id = :uid', { uid: parseInt(userId, 10) });
+      qb.andWhere('a.user_id = :uid', { uid: userId });
     }
 
     if (current.role === 'brand_manager') {

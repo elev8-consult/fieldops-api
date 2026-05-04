@@ -28,21 +28,21 @@ export class UsersService {
       .getOne();
   }
 
-  async findActiveById(id: number): Promise<User | null> {
+  async findActiveById(id: string): Promise<User | null> {
     return this.userRepo.findOne({
       where: { id, isActive: true },
       relations: ['brand'],
     });
   }
 
-  private assertBrandManagerScope(current: JwtUser, targetBrandId: number | null) {
+  private assertBrandManagerScope(current: JwtUser, targetBrandId: string | null) {
     if (current.role !== 'brand_manager') return;
     if (current.brandId == null || targetBrandId !== current.brandId) {
       throw new ForbiddenException('Out of brand scope');
     }
   }
 
-  async findAll(current: JwtUser, brandId?: number) {
+  async findAll(current: JwtUser, brandId?: string) {
     const qb = this.userRepo
       .createQueryBuilder('u')
       .leftJoinAndSelect('u.brand', 'brand')
@@ -60,7 +60,7 @@ export class UsersService {
     return qb.getMany();
   }
 
-  async findOne(id: number, current: JwtUser): Promise<User> {
+  async findOne(id: string, current: JwtUser): Promise<User> {
     const user = await this.userRepo.findOne({
       where: { id },
       relations: ['brand'],
@@ -109,7 +109,7 @@ export class UsersService {
   }
 
   async update(
-    id: number,
+    id: string,
     dto: UpdateUserDto,
     current: JwtUser,
   ): Promise<User> {
@@ -149,7 +149,7 @@ export class UsersService {
     return this.userRepo.save(user);
   }
 
-  async softDelete(id: number, current: JwtUser): Promise<void> {
+  async softDelete(id: string, current: JwtUser): Promise<void> {
     if (current.role !== 'super_admin') {
       throw new ForbiddenException();
     }

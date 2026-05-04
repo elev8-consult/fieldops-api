@@ -11,11 +11,11 @@ import { Brand } from '../../brands/entities/brand.entity';
 
 @Entity('products')
 export class Product {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'brand_id', type: 'int' })
-  brandId: number;
+  @Column({ name: 'brand_id', type: 'uuid' })
+  brandId: string;
 
   @ManyToOne(() => Brand)
   @JoinColumn({ name: 'brand_id' })
