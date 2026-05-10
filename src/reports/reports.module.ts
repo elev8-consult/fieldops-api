@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductsModule } from '../products/products.module';
+import { MerchandiserReportItemBatch } from './merchandiser/entities/merchandiser-report-item-batch.entity';
 import { MerchandiserReportItem } from './merchandiser/entities/merchandiser-report-item.entity';
 import { MerchandiserReport } from './merchandiser/entities/merchandiser-report.entity';
 import { MerchandiserController } from './merchandiser/merchandiser.controller';
@@ -17,6 +18,7 @@ import { PromoterService } from './promoter/promoter.service';
     TypeOrmModule.forFeature([
       MerchandiserReport,
       MerchandiserReportItem,
+      MerchandiserReportItemBatch,
       PromoterReport,
       PromoterSaleItem,
       PromoterSampleItem,

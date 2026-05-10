@@ -6,7 +6,6 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Brand } from '../../brands/entities/brand.entity';
 import {
   FlagSeverity,
   FlagStatus,
@@ -26,10 +25,10 @@ export class ReportFlag {
   @JoinColumn({ name: 'report_id' })
   report: ParsedReport;
 
-  @Column({ name: 'flag_code', type: 'varchar', length: 64 })
+  @Column({ name: 'flag_code', type: 'varchar', length: 80 })
   flagCode: string;
 
-  @Column({ name: 'field_name', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'field_name', type: 'varchar', length: 100, nullable: true })
   fieldName: string | null;
 
   @Column({
@@ -40,8 +39,8 @@ export class ReportFlag {
   })
   severity: FlagSeverity | string;
 
-  @Column({ type: 'text' })
-  message: string;
+  @Column({ type: 'text', nullable: true })
+  message: string | null;
 
   @Column({
     type: 'enum',
@@ -60,14 +59,6 @@ export class ReportFlag {
 
   @Column({ name: 'resolved_at', type: 'timestamptz', nullable: true })
   resolvedAt: Date | null;
-
-  @Column({ name: 'resolved_brand_id', type: 'uuid', nullable: true })
-  // Audit fix: mapped report_flags.resolved_brand_id nullable FK.
-  resolvedBrandId: string | null;
-
-  @ManyToOne(() => Brand, { nullable: true })
-  @JoinColumn({ name: 'resolved_brand_id' })
-  resolvedBrand: Brand | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

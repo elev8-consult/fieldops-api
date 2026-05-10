@@ -15,7 +15,7 @@ export class Outlet {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'varchar', length: 150 })
   name: string;
 
   @Column({
@@ -40,14 +40,6 @@ export class Outlet {
 
   @Column({ type: 'text', nullable: true })
   address: string | null;
-
-  @Column({ type: 'double precision', nullable: true })
-  // Audit fix: mapped outlets.latitude from schema inventory.
-  latitude: number | null;
-
-  @Column({ type: 'double precision', nullable: true })
-  // Audit fix: mapped outlets.longitude from schema inventory.
-  longitude: number | null;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

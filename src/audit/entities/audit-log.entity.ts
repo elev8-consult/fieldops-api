@@ -13,23 +13,23 @@ export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'user_id', type: 'uuid', nullable: true })
-  userId: string | null;
+  @Column({ name: 'user_id', type: 'uuid' })
+  userId: string;
 
-  @ManyToOne(() => User, { nullable: true })
+  @ManyToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'user_id' })
-  user: User | null;
+  user: User;
 
-  @Column({ name: 'entity_type', type: 'varchar', length: 128 })
+  @Column({ name: 'entity_type', type: 'varchar', length: 80 })
   entityType: string;
 
   @Column({ name: 'entity_id', type: 'uuid' })
   entityId: string;
 
-  @Column({ type: 'varchar', length: 64 })
+  @Column({ type: 'varchar', length: 40 })
   action: string;
 
-  @Column({ name: 'field_name', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'field_name', type: 'varchar', length: 100, nullable: true })
   fieldName: string | null;
 
   @Column({ name: 'old_value', type: 'text', nullable: true })
