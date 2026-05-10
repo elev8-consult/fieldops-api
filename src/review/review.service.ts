@@ -32,7 +32,7 @@ export class ReviewService {
     const {
       brandId,
       reportType,
-      status = 'flagged',
+      status = 'pending_review',
       search,
       page   = 1,
       limit  = 20,
@@ -343,7 +343,8 @@ export class ReviewService {
     await this.flagsRepo.update(
       { id: flagId },
       {
-        status:       'dismissed',
+        // Audit fix: flag_status enum uses "ignored" in schema.
+        status:       'ignored',
         resolvedById: userId,
         resolvedAt:   new Date(),
       },
@@ -428,7 +429,7 @@ export class ReviewService {
   async getQueueCount(brandId?: string): Promise<number> {
     const query = this.reportsRepo
       .createQueryBuilder('r')
-      .where('r.status = :status', { status: 'flagged' });
+      .where('r.status = :status', { status: 'pending_review' });
 
     if (brandId) {
       query.andWhere('r.brand_id = :brandId', { brandId });

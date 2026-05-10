@@ -5,11 +5,18 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Brand } from '../../brands/entities/brand.entity';
+import {
+  ParsedReportStatus,
+  ReportType,
+} from '../../common/enums/schema.enums';
 import { Outlet } from '../../outlets/entities/outlet.entity';
+import { MerchandiserReport } from '../../reports/merchandiser/entities/merchandiser-report.entity';
+import { PromoterReport } from '../../reports/promoter/entities/promoter-report.entity';
 import { User } from '../../users/entities/user.entity';
 import { WhatsappMessage } from '../../messages/entities/whatsapp-message.entity';
 import { ReportFlag } from './report-flag.entity';
@@ -50,11 +57,22 @@ export class ParsedReport {
   @Column({ name: 'report_date', type: 'date', nullable: true })
   reportDate: string | null;
 
-  @Column({ name: 'report_type', type: 'varchar', length: 32 })
-  reportType: string;
+  @Column({
+    name: 'report_type',
+    type: 'enum',
+    enum: ReportType,
+    enumName: 'report_type',
+    // Audit fix: bind parsed_reports.report_type to SQL report_type enum.
+  })
+  reportType: ReportType | string;
 
-  @Column({ type: 'varchar', length: 32 })
-  status: string;
+  @Column({
+    type: 'enum',
+    enum: ParsedReportStatus,
+    enumName: 'parsed_report_status',
+    // Audit fix: bind parsed_reports.status to SQL parsed_report_status enum.
+  })
+  status: ParsedReportStatus | string;
 
   @Column({ type: 'float', nullable: true })
   confidence: number | null;
@@ -79,4 +97,15 @@ export class ParsedReport {
 
   @OneToMany(() => ReportFlag, (f) => f.report)
   flags: ReportFlag[];
+
+  @OneToOne(() => PromoterReport, (promoterReport) => promoterReport.report)
+  // Audit fix: enforce ParsedReport 1:1 PromoterReport inverse relation.
+  promoterReport: PromoterReport | null;
+
+  @OneToOne(
+    () => MerchandiserReport,
+    (merchandiserReport) => merchandiserReport.report,
+  )
+  // Audit fix: enforce ParsedReport 1:1 MerchandiserReport inverse relation.
+  merchandiserReport: MerchandiserReport | null;
 }

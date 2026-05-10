@@ -56,7 +56,7 @@ export class MerchandiserService {
 
     const qb = this.mrRepo
       .createQueryBuilder('mr')
-      .innerJoinAndSelect('mr.parsedReport', 'pr')
+      .innerJoinAndSelect('mr.report', 'pr')
       .leftJoinAndSelect('pr.brand', 'brand')
       .leftJoinAndSelect('pr.outlet', 'outlet')
       .orderBy('mr.id', 'DESC');
@@ -89,9 +89,9 @@ export class MerchandiserService {
     const mr = await this.mrRepo.findOne({
       where: { id },
       relations: [
-        'parsedReport',
-        'parsedReport.brand',
-        'parsedReport.outlet',
+        'report',
+        'report.brand',
+        'report.outlet',
         'items',
         'items.product',
       ],
@@ -100,12 +100,12 @@ export class MerchandiserService {
       throw new NotFoundException('Merchandiser report not found');
     }
     if (current.role === 'brand_manager') {
-      if (current.brandId !== mr.parsedReport.brandId) {
+      if (current.brandId !== mr.report.brandId) {
         throw new ForbiddenException('Out of brand scope');
       }
     }
 
-    const brandId = mr.parsedReport.brandId;
+    const brandId = mr.report.brandId;
     const itemMetaRows = await this.dataSource.query<
       Array<{
         id: string;

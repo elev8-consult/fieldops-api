@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Outlet } from './outlet.entity';
 
 @Entity('regions')
 export class Region {
@@ -8,9 +9,11 @@ export class Region {
   @Column({ type: 'varchar', length: 255 })
   name: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'varchar', length: 255, default: 'Lebanon' })
+  // Audit fix: regions.country defaults to Lebanon per schema requirement.
   country: string;
 
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  @OneToMany(() => Outlet, (outlet) => outlet.region)
+  // Audit fix: enforce Region 1:N Outlet inverse relation.
+  outlets: Outlet[];
 }

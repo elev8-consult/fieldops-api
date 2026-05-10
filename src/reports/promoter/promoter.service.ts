@@ -57,7 +57,7 @@ export class PromoterService {
 
     const qb = this.prRepo
       .createQueryBuilder('pr')
-      .innerJoinAndSelect('pr.parsedReport', 'parsed')
+      .innerJoinAndSelect('pr.report', 'parsed')
       .leftJoinAndSelect('parsed.brand', 'brand')
       .leftJoinAndSelect('parsed.outlet', 'outlet')
       .orderBy('pr.id', 'DESC');
@@ -90,9 +90,9 @@ export class PromoterService {
     const report = await this.prRepo.findOne({
       where: { id },
       relations: [
-        'parsedReport',
-        'parsedReport.brand',
-        'parsedReport.outlet',
+        'report',
+        'report.brand',
+        'report.outlet',
         'saleItems',
         'saleItems.product',
         'sampleItems',
@@ -103,7 +103,7 @@ export class PromoterService {
       throw new NotFoundException('Promoter report not found');
     }
     if (current.role === 'brand_manager') {
-      if (current.brandId !== report.parsedReport.brandId) {
+      if (current.brandId !== report.report.brandId) {
         throw new ForbiddenException('Out of brand scope');
       }
     }

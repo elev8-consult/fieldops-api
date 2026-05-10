@@ -19,9 +19,10 @@ export class PromoterReport {
   @Column({ name: 'report_id', type: 'uuid', unique: true })
   reportId: string;
 
-  @OneToOne(() => ParsedReport)
+  @OneToOne(() => ParsedReport, (parsedReport) => parsedReport.promoterReport)
   @JoinColumn({ name: 'report_id' })
-  parsedReport: ParsedReport;
+  // Audit fix: relation parity requires promoterReport.report inverse to parsedReport.promoterReport.
+  report: ParsedReport;
 
   @Column({ name: 'promo_stand_placement', type: 'text', nullable: true })
   promoStandPlacement: string | null;
