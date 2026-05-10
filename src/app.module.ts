@@ -9,6 +9,7 @@ import { typeOrmConfigFactory } from './config/database.config';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { MessagesModule } from './messages/messages.module';
 import { OutletsModule } from './outlets/outlets.module';
+import { PromoterDashboardModule } from './promoter-dashboard/promoter-dashboard.module';
 import { ProductsModule } from './products/products.module';
 import { ReportsModule } from './reports/reports.module';
 import { ReviewModule } from './review/review.module';
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module';
     BrandsModule,
     DashboardModule,
     OutletsModule,
+    PromoterDashboardModule,
     ProductsModule,
     MessagesModule,
     ReportsModule,
