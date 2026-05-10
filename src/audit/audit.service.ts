@@ -11,7 +11,7 @@ export class AuditService {
   ) {}
 
   async log(
-    userId: string | null,
+    userId: string,
     entityType: string,
     entityId: string,
     action: string,

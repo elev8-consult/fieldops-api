@@ -7,7 +7,7 @@ import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  email: string | null;
   role: string;
   brandId: string | null;
 }

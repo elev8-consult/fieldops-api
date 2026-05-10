@@ -17,21 +17,29 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'full_name', type: 'varchar', length: 255 })
+  @Column({ name: 'full_name', type: 'varchar', length: 150 })
   fullName: string;
 
-  @Column({ name: 'whatsapp_phone', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'whatsapp_phone',
+    type: 'varchar',
+    length: 30,
+    nullable: true,
+    unique: true,
+  })
   whatsappPhone: string | null;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
-  // Audit fix: users.phone exists in schema and is used as a secondary contact field.
-  phone: string | null;
+  @Column({ type: 'varchar', length: 150, unique: true, nullable: true })
+  email: string | null;
 
-  @Column({ type: 'varchar', length: 255, unique: true })
-  email: string;
-
-  @Column({ name: 'password_hash', type: 'varchar', length: 255, select: false })
-  passwordHash: string;
+  @Column({
+    name: 'password_hash',
+    type: 'varchar',
+    length: 255,
+    select: false,
+    nullable: true,
+  })
+  passwordHash: string | null;
 
   @Column({
     type: 'enum',

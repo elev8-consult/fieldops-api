@@ -14,15 +14,11 @@ export class Brand {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'varchar', length: 120, unique: true })
   name: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true })
+  @Column({ type: 'varchar', length: 80, unique: true })
   slug: string;
-
-  @Column({ name: 'whatsapp_group_id', type: 'varchar', length: 255, nullable: true })
-  // Audit fix: mapped SQL brands.whatsapp_group_id to prevent runtime column mismatch.
-  whatsappGroupId: string | null;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

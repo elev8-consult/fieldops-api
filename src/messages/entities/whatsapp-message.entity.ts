@@ -20,17 +20,13 @@ export class WhatsappMessage {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'wa_message_id', type: 'varchar', length: 255, unique: true })
+  @Column({ name: 'wa_message_id', type: 'varchar', length: 200, unique: true })
   waMessageId: string;
 
-  @Column({ name: 'wa_group_id', type: 'varchar', length: 255, nullable: true })
-  // Audit fix: mapped whatsapp_messages.wa_group_id from schema inventory.
-  waGroupId: string | null;
+  @Column({ name: 'sender_phone', type: 'varchar', length: 30, nullable: true })
+  senderPhone: string | null;
 
-  @Column({ name: 'sender_phone', type: 'varchar', length: 64 })
-  senderPhone: string;
-
-  @Column({ name: 'sender_name', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'sender_name', type: 'varchar', length: 150, nullable: true })
   senderName: string | null;
 
   @Column({ name: 'body_raw', type: 'text', nullable: true })
@@ -39,7 +35,7 @@ export class WhatsappMessage {
   @Column({ name: 'body_normalized', type: 'text', nullable: true })
   bodyNormalized: string | null;
 
-  @Column({ name: 'message_type', type: 'varchar', length: 32, nullable: true })
+  @Column({ name: 'message_type', type: 'varchar', length: 30, nullable: true })
   messageType: string | null;
 
   @Column({ name: 'has_media', type: 'boolean', default: false })
@@ -68,7 +64,7 @@ export class WhatsappMessage {
   @Column({ name: 'ai_extraction', type: 'jsonb', nullable: true })
   aiExtraction: Record<string, unknown> | null;
 
-  @Column({ name: 'ai_confidence', type: 'float', nullable: true })
+  @Column({ name: 'ai_confidence', type: 'decimal', precision: 4, scale: 3, nullable: true })
   aiConfidence: number | null;
 
   @Column({ name: 'received_at', type: 'timestamptz' })

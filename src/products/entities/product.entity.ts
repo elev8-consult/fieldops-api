@@ -24,10 +24,10 @@ export class Product {
   @JoinColumn({ name: 'brand_id' })
   brand: Brand;
 
-  @Column({ name: 'canonical_name', type: 'varchar', length: 512 })
+  @Column({ name: 'canonical_name', type: 'varchar', length: 200 })
   canonicalName: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 80, nullable: true })
   sku: string | null;
 
   @Column({
@@ -39,11 +39,14 @@ export class Product {
   })
   flow: string;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({ type: 'varchar', length: 30, nullable: true })
   unit: string | null;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
+  sortOrder: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

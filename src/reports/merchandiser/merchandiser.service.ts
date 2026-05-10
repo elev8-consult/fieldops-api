@@ -8,6 +8,7 @@ import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuditService } from '../../audit/audit.service';
 import { JwtUser } from '../../common/interfaces/jwt-user.interface';
 import { ProductsService } from '../../products/products.service';
+import { MerchandiserReportItemBatch } from './entities/merchandiser-report-item-batch.entity';
 import { MerchandiserReportItem } from './entities/merchandiser-report-item.entity';
 import { MerchandiserReport } from './entities/merchandiser-report.entity';
 import { UpdateMerchandiserItemDto } from './dto/update-merchandiser-item.dto';
@@ -30,6 +31,8 @@ export class MerchandiserService {
     private readonly mrRepo: Repository<MerchandiserReport>,
     @InjectRepository(MerchandiserReportItem)
     private readonly itemRepo: Repository<MerchandiserReportItem>,
+    @InjectRepository(MerchandiserReportItemBatch)
+    private readonly batchRepo: Repository<MerchandiserReportItemBatch>,
     private readonly auditService: AuditService,
     private readonly productsService: ProductsService,
     private readonly dataSource: DataSource,
@@ -94,6 +97,7 @@ export class MerchandiserService {
         'report.outlet',
         'items',
         'items.product',
+        'items.batches',
       ],
     });
     if (!mr) {
@@ -151,6 +155,13 @@ export class MerchandiserService {
     }
 
     return mr;
+  }
+
+  async findBatchesByItem(itemId: string): Promise<MerchandiserReportItemBatch[]> {
+    return this.batchRepo.find({
+      where: { reportItemId: itemId },
+      order: { createdAt: 'ASC' },
+    });
   }
 
   async updateReport(

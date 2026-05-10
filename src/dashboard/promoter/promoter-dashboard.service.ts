@@ -17,6 +17,7 @@ type GridSqlRow = {
   promoter_name: string;
   product_id: string | null;
   product_name: string | null;
+  sort_order: number | null;
   is_offer: boolean | null;
   qty_sold: string;
 };
@@ -110,6 +111,7 @@ export class PromoterDashboardService {
         u.full_name                       AS promoter_name,
         psi.product_id,
         p.canonical_name                  AS product_name,
+        p.sort_order                      AS sort_order,
         psi.is_offer,
         COALESCE(SUM(psi.quantity), 0)    AS qty_sold
       FROM parsed_reports pr
@@ -129,8 +131,8 @@ export class PromoterDashboardService {
       GROUP BY
         o.id, o.name, o.type, r.id, r.name,
         pr.report_date, pr.status, pr.id,
-        u.full_name, psi.product_id, p.canonical_name, psi.is_offer
-      ORDER BY o.name, pr.report_date, p.canonical_name
+        u.full_name, psi.product_id, p.canonical_name, p.sort_order, psi.is_offer
+      ORDER BY o.name, pr.report_date, p.sort_order, p.canonical_name
       `,
       [
         brandId,
@@ -364,6 +366,94 @@ export class PromoterDashboardService {
       [brandId, outletId, filter.date_from, filter.date_to, statuses],
     );
 
+    const reportIds = reports.map((row) => row.report_id);
+    const salesRows =
+      reportIds.length > 0
+        ? await this.dataSource.query<
+            Array<{
+              report_id: string;
+              id: string;
+              product_id: string | null;
+              product_name_raw: string;
+              quantity: number | null;
+              promo_label: string | null;
+              is_offer: boolean;
+              is_product_matched: boolean;
+              match_confidence: number | null;
+              match_type: string | null;
+            }>
+          >(
+            `
+            SELECT
+              pr.id::text AS report_id,
+              psi.id::text AS id,
+              psi.product_id::text AS product_id,
+              psi.product_name_raw,
+              psi.quantity,
+              psi.promo_label,
+              psi.is_offer,
+              psi.is_product_matched,
+              psi.match_confidence,
+              psi.match_type
+            FROM parsed_reports pr
+            JOIN promoter_reports pmr ON pmr.report_id = pr.id
+            JOIN promoter_sale_items psi ON psi.promoter_report_id = pmr.id
+            WHERE pr.id = ANY($1::uuid[])
+            ORDER BY pr.report_date DESC, psi.created_at ASC
+            `,
+            [reportIds],
+          )
+        : [];
+
+    const sampleRows =
+      reportIds.length > 0
+        ? await this.dataSource.query<
+            Array<{
+              report_id: string;
+              id: string;
+              product_id: string | null;
+              product_name_raw: string;
+              quantity: number | null;
+              availability_note: string | null;
+              is_product_matched: boolean;
+              sample_match_confidence: number | null;
+              sample_match_type: string | null;
+            }>
+          >(
+            `
+            SELECT
+              pr.id::text AS report_id,
+              psam.id::text AS id,
+              psam.product_id::text AS product_id,
+              psam.product_name_raw,
+              psam.quantity,
+              psam.availability_note,
+              psam.is_product_matched,
+              psam.match_confidence AS sample_match_confidence,
+              psam.match_type AS sample_match_type
+            FROM parsed_reports pr
+            JOIN promoter_reports pmr ON pmr.report_id = pr.id
+            JOIN promoter_sample_items psam ON psam.promoter_report_id = pmr.id
+            WHERE pr.id = ANY($1::uuid[])
+            ORDER BY pr.report_date DESC, psam.created_at ASC
+            `,
+            [reportIds],
+          )
+        : [];
+
+    const salesByReport = new Map<string, typeof salesRows>();
+    for (const row of salesRows) {
+      const existing = salesByReport.get(row.report_id) ?? [];
+      existing.push(row);
+      salesByReport.set(row.report_id, existing);
+    }
+    const samplesByReport = new Map<string, typeof sampleRows>();
+    for (const row of sampleRows) {
+      const existing = samplesByReport.get(row.report_id) ?? [];
+      existing.push(row);
+      samplesByReport.set(row.report_id, existing);
+    }
+
     return {
       outlet: {
         id: outlet.id,
@@ -371,7 +461,11 @@ export class PromoterDashboardService {
         type: outlet.type,
         region_name: outlet.region_name,
       },
-      reports,
+      reports: reports.map((report) => ({
+        ...report,
+        sales: salesByReport.get(report.report_id) ?? [],
+        samples: samplesByReport.get(report.report_id) ?? [],
+      })),
     };
   }
 }

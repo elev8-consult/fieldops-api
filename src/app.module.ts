@@ -10,8 +10,11 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { MessagesModule } from './messages/messages.module';
 import { OutletsModule } from './outlets/outlets.module';
 import { ProductsModule } from './products/products.module';
+import { MerchandiserReportItemBatch } from './reports/merchandiser/entities/merchandiser-report-item-batch.entity';
 import { ReportsModule } from './reports/reports.module';
 import { ReviewModule } from './review/review.module';
+import { UnknownSender } from './unknown-senders/entities/unknown-sender.entity';
+import { UnknownSendersModule } from './unknown-senders/unknown-senders.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -19,7 +22,10 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: typeOrmConfigFactory,
+      useFactory: (config: ConfigService) => ({
+        ...typeOrmConfigFactory(config),
+        entities: [MerchandiserReportItemBatch, UnknownSender],
+      }),
       inject: [ConfigService],
     }),
     AuditModule,
@@ -32,6 +38,7 @@ import { UsersModule } from './users/users.module';
     MessagesModule,
     ReportsModule,
     ReviewModule,
+    UnknownSendersModule,
     AnalyticsModule,
   ],
 })

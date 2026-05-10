@@ -74,16 +74,16 @@ export class ParsedReport {
   })
   status: ParsedReportStatus | string;
 
-  @Column({ type: 'float', nullable: true })
+  @Column({ type: 'decimal', precision: 4, scale: 3, nullable: true })
   confidence: number | null;
 
   @Column({ name: 'location_raw', type: 'text', nullable: true })
   locationRaw: string | null;
 
-  @Column({ name: 'date_raw', type: 'varchar', length: 512, nullable: true })
+  @Column({ name: 'date_raw', type: 'varchar', length: 100, nullable: true })
   dateRaw: string | null;
 
-  @Column({ name: 'name_raw', type: 'varchar', length: 512, nullable: true })
+  @Column({ name: 'name_raw', type: 'varchar', length: 150, nullable: true })
   nameRaw: string | null;
 
   @Column({ name: 'is_depot_report', type: 'boolean', default: false })

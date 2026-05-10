@@ -23,7 +23,7 @@ export class MerchandiserReport {
   // Audit fix: relation parity requires merchandiserReport.report inverse to parsedReport.merchandiserReport.
   report: ParsedReport;
 
-  @Column({ name: 'promo_type', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'promo_type', type: 'varchar', length: 100, nullable: true })
   promoType: string | null;
 
   @Column({ type: 'text', nullable: true })

@@ -28,13 +28,13 @@ export class PromoterSaleItem {
   @JoinColumn({ name: 'product_id' })
   product: Product | null;
 
-  @Column({ name: 'product_name_raw', type: 'varchar', length: 512, nullable: true })
-  productNameRaw: string | null;
+  @Column({ name: 'product_name_raw', type: 'varchar', length: 300 })
+  productNameRaw: string;
 
   @Column({ type: 'int', nullable: true })
   quantity: number | null;
 
-  @Column({ name: 'promo_label', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'promo_label', type: 'varchar', length: 150, nullable: true })
   promoLabel: string | null;
 
   @Column({ name: 'is_offer', type: 'boolean', default: false })
@@ -42,6 +42,18 @@ export class PromoterSaleItem {
 
   @Column({ name: 'is_product_matched', type: 'boolean', default: false })
   isProductMatched: boolean;
+
+  @Column({
+    name: 'match_confidence',
+    type: 'decimal',
+    precision: 4,
+    scale: 3,
+    nullable: true,
+  })
+  matchConfidence: number | null;
+
+  @Column({ name: 'match_type', type: 'varchar', length: 20, nullable: true })
+  matchType: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
