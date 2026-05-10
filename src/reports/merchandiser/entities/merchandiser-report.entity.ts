@@ -12,15 +12,16 @@ import { MerchandiserReportItem } from './merchandiser-report-item.entity';
 
 @Entity('merchandiser_reports')
 export class MerchandiserReport {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'report_id', type: 'int', unique: true })
-  reportId: number;
+  @Column({ name: 'report_id', type: 'uuid', unique: true })
+  reportId: string;
 
-  @OneToOne(() => ParsedReport)
+  @OneToOne(() => ParsedReport, (parsedReport) => parsedReport.merchandiserReport)
   @JoinColumn({ name: 'report_id' })
-  parsedReport: ParsedReport;
+  // Audit fix: relation parity requires merchandiserReport.report inverse to parsedReport.merchandiserReport.
+  report: ParsedReport;
 
   @Column({ name: 'promo_type', type: 'varchar', length: 255, nullable: true })
   promoType: string | null;

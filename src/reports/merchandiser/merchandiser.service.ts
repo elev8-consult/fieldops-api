@@ -14,8 +14,8 @@ import { UpdateMerchandiserItemDto } from './dto/update-merchandiser-item.dto';
 import { UpdateMerchandiserReportDto } from './dto/update-merchandiser-report.dto';
 
 export interface MerchListQuery {
-  brandId?: number;
-  outletId?: number;
+  brandId?: string;
+  outletId?: string;
   from?: string;
   to?: string;
   status?: string;
@@ -38,7 +38,7 @@ export class MerchandiserService {
   private applyBrandFilter(
     current: JwtUser,
     qb: SelectQueryBuilder<MerchandiserReport>,
-    brandParam?: number,
+    brandParam?: string,
   ) {
     if (current.role === 'brand_manager') {
       if (current.brandId == null) {
@@ -56,7 +56,7 @@ export class MerchandiserService {
 
     const qb = this.mrRepo
       .createQueryBuilder('mr')
-      .innerJoinAndSelect('mr.parsedReport', 'pr')
+      .innerJoinAndSelect('mr.report', 'pr')
       .leftJoinAndSelect('pr.brand', 'brand')
       .leftJoinAndSelect('pr.outlet', 'outlet')
       .orderBy('mr.id', 'DESC');
@@ -85,13 +85,13 @@ export class MerchandiserService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: number, current: JwtUser): Promise<MerchandiserReport> {
+  async findOne(id: string, current: JwtUser): Promise<MerchandiserReport> {
     const mr = await this.mrRepo.findOne({
       where: { id },
       relations: [
-        'parsedReport',
-        'parsedReport.brand',
-        'parsedReport.outlet',
+        'report',
+        'report.brand',
+        'report.outlet',
         'items',
         'items.product',
       ],
@@ -100,12 +100,12 @@ export class MerchandiserService {
       throw new NotFoundException('Merchandiser report not found');
     }
     if (current.role === 'brand_manager') {
-      if (current.brandId !== mr.parsedReport.brandId) {
+      if (current.brandId !== mr.report.brandId) {
         throw new ForbiddenException('Out of brand scope');
       }
     }
 
-    const brandId = mr.parsedReport.brandId;
+    const brandId = mr.report.brandId;
     const itemMetaRows = await this.dataSource.query<
       Array<{
         id: string;
@@ -154,7 +154,7 @@ export class MerchandiserService {
   }
 
   async updateReport(
-    id: number,
+    id: string,
     dto: UpdateMerchandiserReportDto,
     current: JwtUser,
   ): Promise<MerchandiserReport> {
@@ -198,8 +198,8 @@ export class MerchandiserService {
   }
 
   async updateItem(
-    reportId: number,
-    itemId: number,
+    reportId: string,
+    itemId: string,
     dto: UpdateMerchandiserItemDto,
     current: JwtUser,
   ): Promise<MerchandiserReportItem> {

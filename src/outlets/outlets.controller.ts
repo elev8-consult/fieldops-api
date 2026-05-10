@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -34,10 +33,7 @@ export class OutletsController {
     @Query('search') search?: string,
   ) {
     return this.outletsService.findAll(current, {
-      regionId:
-        regionId != null && regionId !== ''
-          ? parseInt(regionId, 10)
-          : undefined,
+      regionId: regionId || undefined,
       isDepot:
         isDepot === 'true' ? true : isDepot === 'false' ? false : undefined,
       search,
@@ -50,7 +46,7 @@ export class OutletsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.outletsService.findOne(id as unknown as number, current);
+    return this.outletsService.findOne(id, current);
   }
 
   @Post()
@@ -65,12 +61,12 @@ export class OutletsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateOutletDto,
   ) {
-    return this.outletsService.update(id as unknown as number, dto);
+    return this.outletsService.update(id, dto);
   }
 
   @Delete(':id')
   @Roles('super_admin')
   remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.outletsService.softDelete(id as unknown as number);
+    return this.outletsService.softDelete(id);
   }
 }

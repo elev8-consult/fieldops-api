@@ -15,8 +15,8 @@ import { UpdatePromoterSaleItemDto } from './dto/update-promoter-sale-item.dto';
 import { UpdatePromoterSampleItemDto } from './dto/update-promoter-sample-item.dto';
 
 export interface PromoterListQuery {
-  brandId?: number;
-  outletId?: number;
+  brandId?: string;
+  outletId?: string;
   from?: string;
   to?: string;
   status?: string;
@@ -39,7 +39,7 @@ export class PromoterService {
   private applyBrandFilter(
     current: JwtUser,
     qb: SelectQueryBuilder<PromoterReport>,
-    brandParam?: number,
+    brandParam?: string,
   ) {
     if (current.role === 'brand_manager') {
       if (current.brandId == null) {
@@ -57,7 +57,7 @@ export class PromoterService {
 
     const qb = this.prRepo
       .createQueryBuilder('pr')
-      .innerJoinAndSelect('pr.parsedReport', 'parsed')
+      .innerJoinAndSelect('pr.report', 'parsed')
       .leftJoinAndSelect('parsed.brand', 'brand')
       .leftJoinAndSelect('parsed.outlet', 'outlet')
       .orderBy('pr.id', 'DESC');
@@ -86,13 +86,13 @@ export class PromoterService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: number, current: JwtUser): Promise<PromoterReport> {
+  async findOne(id: string, current: JwtUser): Promise<PromoterReport> {
     const report = await this.prRepo.findOne({
       where: { id },
       relations: [
-        'parsedReport',
-        'parsedReport.brand',
-        'parsedReport.outlet',
+        'report',
+        'report.brand',
+        'report.outlet',
         'saleItems',
         'saleItems.product',
         'sampleItems',
@@ -103,7 +103,7 @@ export class PromoterService {
       throw new NotFoundException('Promoter report not found');
     }
     if (current.role === 'brand_manager') {
-      if (current.brandId !== report.parsedReport.brandId) {
+      if (current.brandId !== report.report.brandId) {
         throw new ForbiddenException('Out of brand scope');
       }
     }
@@ -121,7 +121,7 @@ export class PromoterService {
   }
 
   async updateReport(
-    id: number,
+    id: string,
     dto: UpdatePromoterReportDto,
     current: JwtUser,
   ): Promise<PromoterReport> {
@@ -185,8 +185,8 @@ export class PromoterService {
   }
 
   async updateSaleItem(
-    reportId: number,
-    itemId: number,
+    reportId: string,
+    itemId: string,
     dto: UpdatePromoterSaleItemDto,
     current: JwtUser,
   ): Promise<PromoterSaleItem> {
@@ -258,8 +258,8 @@ export class PromoterService {
   }
 
   async updateSampleItem(
-    reportId: number,
-    itemId: number,
+    reportId: string,
+    itemId: string,
     dto: UpdatePromoterSampleItemDto,
     current: JwtUser,
   ): Promise<PromoterSampleItem> {

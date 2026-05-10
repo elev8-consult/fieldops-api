@@ -15,8 +15,8 @@ export class AnalyticsService {
   /** null = all brands (super_admin only, when brand_id query omitted) */
   private resolveBrandId(
     current: JwtUser,
-    brandId?: number,
-  ): number | null {
+    brandId?: string,
+  ): string | null {
     if (current.role === 'brand_manager') {
       if (current.brandId == null) {
         throw new ForbiddenException('Brand manager has no brand');
@@ -28,7 +28,7 @@ export class AnalyticsService {
 
   async summary(
     current: JwtUser,
-    brandId?: number,
+    brandId?: string,
     from?: string,
     to?: string,
   ) {
@@ -66,7 +66,7 @@ export class AnalyticsService {
     }));
   }
 
-  async flaggedRate(current: JwtUser, brandId?: number) {
+  async flaggedRate(current: JwtUser, brandId?: string) {
     const bid = this.resolveBrandId(current, brandId);
 
     const totalQb = this.parsedRepo.createQueryBuilder('pr');
@@ -91,7 +91,7 @@ export class AnalyticsService {
 
   async reportsByDay(
     current: JwtUser,
-    brandId?: number,
+    brandId?: string,
     from?: string,
     to?: string,
   ) {
@@ -126,7 +126,7 @@ export class AnalyticsService {
 
   async topFlaggedProducts(
     current: JwtUser,
-    brandId?: number,
+    brandId?: string,
     limit = 10,
   ) {
     const bid = this.resolveBrandId(current, brandId);

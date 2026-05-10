@@ -13,15 +13,16 @@ import { PromoterSampleItem } from './promoter-sample-item.entity';
 
 @Entity('promoter_reports')
 export class PromoterReport {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'report_id', type: 'int', unique: true })
-  reportId: number;
+  @Column({ name: 'report_id', type: 'uuid', unique: true })
+  reportId: string;
 
-  @OneToOne(() => ParsedReport)
+  @OneToOne(() => ParsedReport, (parsedReport) => parsedReport.promoterReport)
   @JoinColumn({ name: 'report_id' })
-  parsedReport: ParsedReport;
+  // Audit fix: relation parity requires promoterReport.report inverse to parsedReport.promoterReport.
+  report: ParsedReport;
 
   @Column({ name: 'promo_stand_placement', type: 'text', nullable: true })
   promoStandPlacement: string | null;

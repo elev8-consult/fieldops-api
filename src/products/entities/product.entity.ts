@@ -4,20 +4,23 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ProductFlow } from '../../common/enums/schema.enums';
 import { Brand } from '../../brands/entities/brand.entity';
+import { ProductAlias } from './product-alias.entity';
 
 @Entity('products')
 export class Product {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'brand_id', type: 'int' })
-  brandId: number;
+  @Column({ name: 'brand_id', type: 'uuid' })
+  brandId: string;
 
-  @ManyToOne(() => Brand)
+  @ManyToOne(() => Brand, (brand) => brand.products)
   @JoinColumn({ name: 'brand_id' })
   brand: Brand;
 
@@ -27,7 +30,13 @@ export class Product {
   @Column({ type: 'varchar', length: 255, nullable: true })
   sku: string | null;
 
-  @Column({ type: 'varchar', length: 32, default: 'both' })
+  @Column({
+    type: 'enum',
+    enum: ProductFlow,
+    enumName: 'product_flow',
+    default: ProductFlow.BOTH,
+    // Audit fix: bind to SQL enum product_flow for parity.
+  })
   flow: string;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
@@ -41,4 +50,7 @@ export class Product {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @OneToMany(() => ProductAlias, (alias) => alias.product)
+  aliases: ProductAlias[];
 }

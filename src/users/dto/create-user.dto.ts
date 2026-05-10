@@ -1,12 +1,11 @@
 import {
   IsEmail,
   IsEnum,
-  IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 const ROLES = [
   'super_admin',
@@ -37,7 +36,6 @@ export class CreateUserDto {
   role: (typeof ROLES)[number];
 
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  brandId?: number | null;
+  @IsUUID('4')
+  brandId?: string | null;
 }

@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Query,
@@ -36,14 +35,8 @@ export class MerchandiserController {
     @Query('limit') limit?: string,
   ) {
     return this.merchandiserService.list(current, {
-      brandId:
-        brandId != null && brandId !== ''
-          ? parseInt(brandId, 10)
-          : undefined,
-      outletId:
-        outletId != null && outletId !== ''
-          ? parseInt(outletId, 10)
-          : undefined,
+      brandId: brandId || undefined,
+      outletId: outletId || undefined,
       from,
       to,
       status,
@@ -58,7 +51,7 @@ export class MerchandiserController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.merchandiserService.findOne(id as unknown as number, current);
+    return this.merchandiserService.findOne(id, current);
   }
 
   @Patch(':id')
@@ -69,7 +62,7 @@ export class MerchandiserController {
     @CurrentUser() current: JwtUser,
   ) {
     return this.merchandiserService.updateReport(
-      id as unknown as number,
+      id,
       dto,
       current,
     );
@@ -84,8 +77,8 @@ export class MerchandiserController {
     @CurrentUser() current: JwtUser,
   ) {
     return this.merchandiserService.updateItem(
-      id as unknown as number,
-      itemId as unknown as number,
+      id,
+      itemId,
       dto,
       current,
     );
