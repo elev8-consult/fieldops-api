@@ -16,6 +16,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateOutletDto } from './dto/create-outlet.dto';
+import { MatchOutletDto } from './dto/match-outlet.dto';
+import type { MatchOutletResponseDto } from './dto/match-outlet-response.dto';
 import { UpdateOutletDto } from './dto/update-outlet.dto';
 import { OutletsService } from './outlets.service';
 
@@ -23,6 +25,14 @@ import { OutletsService } from './outlets.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OutletsController {
   constructor(private readonly outletsService: OutletsService) {}
+
+  @Post('match')
+  @UseGuards(JwtAuthGuard)
+  async matchOutlet(
+    @Body() dto: MatchOutletDto,
+  ): Promise<MatchOutletResponseDto> {
+    return this.outletsService.matchOutlet(dto.location_raw, dto.brand_id);
+  }
 
   @Get()
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
