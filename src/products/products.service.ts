@@ -8,6 +8,10 @@ import { DataSource, Repository } from 'typeorm';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateAliasDto } from './dto/create-alias.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import {
+  MatchProductsDto,
+  type MatchResult,
+} from './dto/match-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductAlias } from './entities/product-alias.entity';
 import { Product } from './entities/product.entity';
@@ -177,37 +181,180 @@ export class ProductsService {
     };
   }
 
+  private async resolveBrandIdByRaw(brandRaw: string): Promise<string | null> {
+    if (!brandRaw || brandRaw.trim() === '') {
+      return null;
+    }
+
+    const rows = await this.dataSource.query<Array<{ id: string | number }>>(
+      `
+      SELECT id
+      FROM brands
+      WHERE (lower(name) = lower($1) OR name ILIKE '%' || $1 || '%')
+        AND is_active = true
+      LIMIT 1
+      `,
+      [brandRaw.trim()],
+    );
+
+    return rows[0] ? String(rows[0].id) : null;
+  }
+
+  async matchProducts(dto: MatchProductsDto): Promise<MatchResult[]> {
+    if (!dto.items || dto.items.length === 0) return [];
+
+    const brandId = dto.brandId?.trim() || null;
+    let resolvedBrandId: string | null = brandId;
+
+    if (!resolvedBrandId && dto.brandRaw?.trim()) {
+      resolvedBrandId = await this.resolveBrandIdByRaw(dto.brandRaw);
+    }
+
+    const results: MatchResult[] = [];
+
+    for (const item of dto.items) {
+      const originalRaw = item.product_name_raw ?? '';
+      const raw = originalRaw.trim();
+
+      if (!raw) {
+        results.push({
+          product_name_raw: originalRaw,
+          product_id: null,
+          canonical_name: null,
+          match_confidence: 0,
+          match_type: 'none',
+          suggestions: [],
+        });
+        continue;
+      }
+
+      try {
+        const brandClause = resolvedBrandId ? 'AND p.brand_id::text = $2' : '';
+        const baseParams = resolvedBrandId ? [raw, resolvedBrandId] : [raw];
+
+        const exact = await this.dataSource.query<
+          Array<{ id: string | number; canonical_name: string }>
+        >(
+          `
+          SELECT p.id, p.canonical_name
+          FROM products p
+          WHERE lower(p.canonical_name) = lower($1)
+            AND p.is_active = true
+            ${brandClause}
+          LIMIT 1
+          `,
+          baseParams,
+        );
+
+        if (exact[0]) {
+          results.push({
+            product_name_raw: originalRaw,
+            product_id: String(exact[0].id),
+            canonical_name: exact[0].canonical_name,
+            match_confidence: 1,
+            match_type: 'exact',
+            suggestions: [],
+          });
+          continue;
+        }
+
+        const alias = await this.dataSource.query<
+          Array<{ id: string | number; canonical_name: string }>
+        >(
+          `
+          SELECT p.id, p.canonical_name
+          FROM product_aliases pa
+          JOIN products p ON p.id = pa.product_id
+          WHERE lower(pa.alias) = lower($1)
+            AND p.is_active = true
+            ${brandClause}
+          LIMIT 1
+          `,
+          baseParams,
+        );
+
+        if (alias[0]) {
+          results.push({
+            product_name_raw: originalRaw,
+            product_id: String(alias[0].id),
+            canonical_name: alias[0].canonical_name,
+            match_confidence: 0.95,
+            match_type: 'alias',
+            suggestions: [],
+          });
+          continue;
+        }
+
+        const fuzzy = await this.dataSource.query<
+          Array<{ id: string | number; canonical_name: string; score: string | number }>
+        >(
+          `
+          SELECT
+            p.id,
+            p.canonical_name,
+            similarity(lower(p.canonical_name), lower($1)) AS score
+          FROM products p
+          WHERE p.is_active = true
+            ${brandClause}
+            AND similarity(lower(p.canonical_name), lower($1)) > 0.3
+          ORDER BY score DESC
+          LIMIT 5
+          `,
+          baseParams,
+        );
+
+        const suggestions = fuzzy.map((row) => ({
+          product_id: String(row.id),
+          canonical_name: row.canonical_name,
+          confidence: parseFloat(String(row.score)),
+        }));
+
+        const topConfidence = fuzzy[0] ? parseFloat(String(fuzzy[0].score)) : 0;
+
+        if (fuzzy[0] && topConfidence >= 0.5) {
+          results.push({
+            product_name_raw: originalRaw,
+            product_id: String(fuzzy[0].id),
+            canonical_name: fuzzy[0].canonical_name,
+            match_confidence: topConfidence,
+            match_type: 'fuzzy',
+            suggestions,
+          });
+        } else {
+          results.push({
+            product_name_raw: originalRaw,
+            product_id: null,
+            canonical_name: null,
+            match_confidence: topConfidence,
+            match_type: 'none',
+            suggestions,
+          });
+        }
+      } catch {
+        results.push({
+          product_name_raw: originalRaw,
+          product_id: null,
+          canonical_name: null,
+          match_confidence: 0,
+          match_type: 'none',
+          suggestions: [],
+        });
+      }
+    }
+
+    return results;
+  }
+
   async matchProductBatch(
     brandId: string,
     items: Array<{ product_name_raw: string }>,
-  ): Promise<
-    Array<{
-      product_name_raw: string;
-      product_id: string | null;
-      canonical_name: string | null;
-      match_confidence: number;
-      match_type: 'exact' | 'alias' | 'fuzzy' | 'none';
-      suggestions: Array<{
-        productId: string;
-        canonicalName: string;
-        confidence: number;
-      }>;
-    }>
-  > {
-    const results = await Promise.all(
-      items.map(async (item) => {
-        const match = await this.fuzzyMatchProduct(brandId, item.product_name_raw);
-        return {
-          product_name_raw: item.product_name_raw,
-          product_id: match.productId,
-          canonical_name: match.canonicalName,
-          match_confidence: match.matchConfidence,
-          match_type: match.matchType,
-          suggestions: match.suggestions,
-        };
-      }),
-    );
-    return results;
+    brandRaw?: string,
+  ): Promise<MatchResult[]> {
+    return this.matchProducts({
+      brandId,
+      brandRaw,
+      items,
+    });
   }
 
   private assertBrandProduct(current: JwtUser, productBrandId: number) {
