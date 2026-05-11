@@ -4,9 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateOutletDto } from './dto/create-outlet.dto';
+import { MatchOutletResponseDto } from './dto/match-outlet-response.dto';
 import { UpdateOutletDto } from './dto/update-outlet.dto';
 import { Outlet } from './entities/outlet.entity';
 
@@ -15,7 +16,94 @@ export class OutletsService {
   constructor(
     @InjectRepository(Outlet)
     private readonly outletRepo: Repository<Outlet>,
+    private readonly dataSource: DataSource,
   ) {}
+
+  async matchOutlet(
+    locationRaw: string,
+    brandId?: string,
+  ): Promise<MatchOutletResponseDto> {
+    void brandId;
+
+    if (!locationRaw || locationRaw.trim() === '') {
+      return {
+        outlet_id: null,
+        outlet_name: null,
+        match_confidence: 0,
+        match_type: 'none',
+        is_depot: false,
+        suggestions: [],
+      };
+    }
+
+    const candidates = await this.dataSource.query<
+      { id: string; name: string; is_depot: boolean; confidence: number }[]
+    >(
+      `
+      SELECT
+        id,
+        name,
+        is_depot,
+        CASE
+          WHEN lower(name) = lower($1)
+            THEN 1.0
+          WHEN lower(regexp_replace(name, '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
+             = lower(regexp_replace($1,   '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
+            THEN 0.95
+          WHEN lower(name) LIKE '%' || lower($1) || '%'
+            OR lower($1)   LIKE '%' || lower(name) || '%'
+            THEN 0.80
+          ELSE similarity(lower(name), lower($1))
+        END AS confidence
+      FROM outlets
+      WHERE is_active = true
+        AND (
+          lower(name) LIKE '%' || lower($1) || '%'
+          OR lower($1) LIKE '%' || lower(name) || '%'
+          OR similarity(lower(name), lower($1)) > 0.3
+        )
+      ORDER BY confidence DESC
+      LIMIT 5
+      `,
+      [locationRaw.trim()],
+    );
+
+    if (!candidates.length) {
+      return {
+        outlet_id: null,
+        outlet_name: null,
+        match_confidence: 0,
+        match_type: 'none',
+        is_depot: false,
+        suggestions: [],
+      };
+    }
+
+    const top = candidates[0];
+    const confidence = parseFloat(top.confidence as unknown as string);
+
+    const match_type: MatchOutletResponseDto['match_type'] =
+      confidence >= 1.0
+        ? 'exact'
+        : confidence >= 0.95
+          ? 'normalized'
+          : confidence >= 0.75
+            ? 'fuzzy'
+            : 'none';
+
+    return {
+      outlet_id: match_type !== 'none' ? top.id : null,
+      outlet_name: match_type !== 'none' ? top.name : null,
+      match_confidence: confidence,
+      match_type,
+      is_depot: top.is_depot ?? false,
+      suggestions: candidates.map((c) => ({
+        outlet_id: c.id,
+        outlet_name: c.name,
+        confidence: parseFloat(c.confidence as unknown as string),
+      })),
+    };
+  }
 
   async findAll(
     current: JwtUser,
