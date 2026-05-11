@@ -11,11 +11,11 @@ import { User } from '../../users/entities/user.entity';
 
 @Entity('product_aliases')
 export class ProductAlias {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'product_id', type: 'int' })
-  productId: number;
+  @Column({ name: 'product_id', type: 'uuid' })
+  productId: string;
 
   @ManyToOne(() => Product, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'product_id' })
@@ -24,8 +24,8 @@ export class ProductAlias {
   @Column({ type: 'varchar', length: 512 })
   alias: string;
 
-  @Column({ name: 'created_by', type: 'int', nullable: true })
-  createdById: number | null;
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdById: string | null;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'created_by' })

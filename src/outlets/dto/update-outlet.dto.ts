@@ -1,12 +1,11 @@
 import {
   IsBoolean,
   IsIn,
-  IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 const OUTLET_TYPES = [
   'supermarket',
@@ -31,9 +30,8 @@ export class UpdateOutletDto {
   isDepot?: boolean;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  regionId?: number;
+  @IsUUID()
+  regionId?: string;
 
   @IsOptional()
   @IsString()

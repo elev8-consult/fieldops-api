@@ -11,11 +11,11 @@ import { ParsedReport } from './parsed-report.entity';
 
 @Entity('report_flags')
 export class ReportFlag {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'report_id', type: 'int' })
-  reportId: number;
+  @Column({ name: 'report_id', type: 'uuid' })
+  reportId: string;
 
   @ManyToOne(() => ParsedReport, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'report_id' })
@@ -36,8 +36,8 @@ export class ReportFlag {
   @Column({ type: 'varchar', length: 32 })
   status: string;
 
-  @Column({ name: 'resolved_by', type: 'int', nullable: true })
-  resolvedById: number | null;
+  @Column({ name: 'resolved_by', type: 'uuid', nullable: true })
+  resolvedById: string | null;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'resolved_by' })

@@ -6,10 +6,10 @@ import { UsersService } from '../users/users.service';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 
 export interface JwtPayload {
-  sub: number;
+  sub: string;
   email: string;
   role: string;
-  brandId: number | null;
+  brandId: string | null;
 }
 
 @Injectable()

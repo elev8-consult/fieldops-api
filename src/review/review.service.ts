@@ -238,7 +238,7 @@ export class ReviewService {
   }
 
   // ── Approve Report ────────────────────────────────────────────────
-  async approve(id: string, userId: number) {
+  async approve(id: string, userId: string) {
     const report = await this.reportsRepo.findOne({
       where: { id: id as unknown as ParsedReport['id'] },
     });
@@ -312,7 +312,7 @@ export class ReviewService {
   }
 
   // ── Resolve Flag ──────────────────────────────────────────────────
-  async resolveFlag(flagId: string, userId: number) {
+  async resolveFlag(flagId: string, userId: string) {
     const flag = await this.flagsRepo.findOne({
       where: { id: flagId as unknown as ReportFlag['id'] },
     });
@@ -333,7 +333,7 @@ export class ReviewService {
   }
 
   // ── Dismiss Flag ──────────────────────────────────────────────────
-  async dismissFlag(flagId: string, userId: number) {
+  async dismissFlag(flagId: string, userId: string) {
     const flag = await this.flagsRepo.findOne({
       where: { id: flagId as unknown as ReportFlag['id'] },
     });
@@ -430,10 +430,7 @@ export class ReviewService {
       .where('r.status = :status', { status: 'flagged' });
 
     if (brandId) {
-      const bid = parseInt(brandId, 10);
-      if (!Number.isNaN(bid)) {
-        query.andWhere('r.brand_id = :brandId', { brandId: bid });
-      }
+      query.andWhere('r.brand_id = :brandId', { brandId });
     }
 
     return query.getCount();

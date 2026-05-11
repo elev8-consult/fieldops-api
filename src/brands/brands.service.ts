@@ -30,7 +30,7 @@ export class BrandsService {
     return qb.getMany();
   }
 
-  async findOne(id: number, current: JwtUser): Promise<Brand> {
+  async findOne(id: string, current: JwtUser): Promise<Brand> {
     const brand = await this.brandRepo.findOne({ where: { id } });
     if (!brand) {
       throw new NotFoundException('Brand not found');
@@ -50,7 +50,7 @@ export class BrandsService {
     return this.brandRepo.save(brand);
   }
 
-  async update(id: number, dto: UpdateBrandDto): Promise<Brand> {
+  async update(id: string, dto: UpdateBrandDto): Promise<Brand> {
     const brand = await this.brandRepo.findOne({ where: { id } });
     if (!brand) {
       throw new NotFoundException('Brand not found');
@@ -61,7 +61,7 @@ export class BrandsService {
     return this.brandRepo.save(brand);
   }
 
-  async softDelete(id: number): Promise<void> {
+  async softDelete(id: string): Promise<void> {
     const brand = await this.brandRepo.findOne({ where: { id } });
     if (!brand) {
       throw new NotFoundException('Brand not found');

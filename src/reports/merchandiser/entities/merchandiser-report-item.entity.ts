@@ -11,18 +11,18 @@ import { MerchandiserReport } from './merchandiser-report.entity';
 
 @Entity('merchandiser_report_items')
 export class MerchandiserReportItem {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'merchandiser_report_id', type: 'int' })
-  merchandiserReportId: number;
+  @Column({ name: 'merchandiser_report_id', type: 'uuid' })
+  merchandiserReportId: string;
 
   @ManyToOne(() => MerchandiserReport, (r) => r.items, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'merchandiser_report_id' })
   merchandiserReport: MerchandiserReport;
 
-  @Column({ name: 'product_id', type: 'int', nullable: true })
-  productId: number | null;
+  @Column({ name: 'product_id', type: 'uuid', nullable: true })
+  productId: string | null;
 
   @ManyToOne(() => Product, { nullable: true })
   @JoinColumn({ name: 'product_id' })

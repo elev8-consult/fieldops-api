@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -31,8 +30,7 @@ export class UsersController {
     @CurrentUser() current: JwtUser,
     @Query('brand_id') brandId?: string,
   ) {
-    const bid =
-      brandId != null && brandId !== '' ? parseInt(brandId, 10) : undefined;
+    const bid = brandId != null && brandId !== '' ? brandId : undefined;
     return this.usersService.findAll(current, bid);
   }
 
@@ -42,7 +40,7 @@ export class UsersController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.usersService.findOne(id as unknown as number, current);
+    return this.usersService.findOne(id, current);
   }
 
   @Post()
@@ -58,7 +56,7 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.usersService.update(id as unknown as number, dto, current);
+    return this.usersService.update(id, dto, current);
   }
 
   @Delete(':id')
@@ -67,6 +65,6 @@ export class UsersController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.usersService.softDelete(id as unknown as number, current);
+    return this.usersService.softDelete(id, current);
   }
 }

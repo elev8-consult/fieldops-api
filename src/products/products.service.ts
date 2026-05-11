@@ -357,7 +357,7 @@ export class ProductsService {
     });
   }
 
-  private assertBrandProduct(current: JwtUser, productBrandId: number) {
+  private assertBrandProduct(current: JwtUser, productBrandId: string) {
     if (current.role !== 'brand_manager') return;
     if (current.brandId == null || current.brandId !== productBrandId) {
       throw new ForbiddenException('Out of brand scope');
@@ -381,7 +381,6 @@ export class ProductsService {
 
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const intRegex = /^\d+$/;
 
     // Build base query without any joins.
     // Joins can cause TypeORM databaseName errors when relation metadata can't be resolved.
@@ -397,8 +396,6 @@ export class ProductsService {
       const trimmed = brandId.trim();
       if (uuidRegex.test(trimmed)) {
         query.andWhere('p.brand_id = :brandId', { brandId: trimmed });
-      } else if (intRegex.test(trimmed)) {
-        query.andWhere('p.brand_id = :brandId', { brandId: parseInt(trimmed, 10) });
       }
     }
 
@@ -425,7 +422,7 @@ export class ProductsService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: number, current: JwtUser): Promise<Product> {
+  async findOne(id: string, current: JwtUser): Promise<Product> {
     const product = await this.productRepo.findOne({
       where: { id },
       relations: ['brand'],
@@ -458,7 +455,7 @@ export class ProductsService {
   }
 
   async update(
-    id: number,
+    id: string,
     dto: UpdateProductDto,
     current: JwtUser,
   ): Promise<Product> {
@@ -486,7 +483,7 @@ export class ProductsService {
     return this.productRepo.save(product);
   }
 
-  async softDelete(id: number, current: JwtUser): Promise<void> {
+  async softDelete(id: string, current: JwtUser): Promise<void> {
     if (current.role !== 'super_admin') {
       throw new ForbiddenException();
     }
@@ -498,7 +495,7 @@ export class ProductsService {
     await this.productRepo.save(product);
   }
 
-  async listAliases(productId: number, current: JwtUser): Promise<ProductAlias[]> {
+  async listAliases(productId: string, current: JwtUser): Promise<ProductAlias[]> {
     await this.findOne(productId, current);
     return this.aliasRepo.find({
       where: { productId },
@@ -508,7 +505,7 @@ export class ProductsService {
   }
 
   async addAlias(
-    productId: number,
+    productId: string,
     dto: CreateAliasDto,
     current: JwtUser,
   ): Promise<ProductAlias> {
@@ -525,7 +522,7 @@ export class ProductsService {
     return this.aliasRepo.save(row);
   }
 
-  async removeAlias(aliasId: number, current: JwtUser): Promise<void> {
+  async removeAlias(aliasId: string, current: JwtUser): Promise<void> {
     const alias = await this.aliasRepo.findOne({
       where: { id: aliasId },
       relations: ['product', 'product.brand'],

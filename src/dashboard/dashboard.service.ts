@@ -4,330 +4,368 @@ import ExcelJS from 'exceljs';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import type { MerchandiserDashboardQueryDto } from './dto/merchandiser-dashboard-query.dto';
 
-type DashboardStatus = 'approved' | 'flagged';
-
-interface DashboardBatch {
-  quantity: number | null;
-  expiryDate: string | null;
-  expiryRaw: string | null;
-}
-
-interface DashboardCell {
-  quantity: number | null;
-  reportDate: string;
-  reportId: string;
-  expiryDate: string | null;
-  expiryRaw: string | null;
-  hasMultipleBatches: boolean;
-  batches: DashboardBatch[];
-  status: DashboardStatus;
-}
-
-interface DashboardRow {
-  outletId: string;
-  outletName: string;
-  isDepot: boolean;
-  cells: Record<string, DashboardCell>;
-}
-
 interface MerchandiserDashboardResponse {
-  brand: { id: string; name: string; slug: string };
-  dateRange: { from: string; to: string };
-  products: Array<{ id: string; name: string }>;
-  outlets: Array<{ id: string; name: string; isDepot: boolean }>;
-  rows: DashboardRow[];
   summary: {
-    totalReports: number;
-    totalOutlets: number;
-    totalProducts: number;
-    approvedCount: number;
-    flaggedCount: number;
-    lastReportDate: string | null;
+    outlets_visited: number;
+    total_items_counted: number;
+    unmatched_products: number;
+    reports_pending_review: number;
+    last_report_at: string | null;
   };
+  products: {
+    id: string;
+    canonical_name: string;
+    sku: string | null;
+    sort_order: number;
+  }[];
+  rows: {
+    outlet_id: string;
+    outlet_name: string;
+    outlet_type: string;
+    region_name: string | null;
+    is_depot: boolean;
+    last_report_date: string | null;
+    has_flags: boolean;
+    pending_review: boolean;
+    cells: Record<
+      string,
+      {
+        quantity: number | null;
+        expiry_date: string | null;
+        expiry_raw: string | null;
+        report_date: string;
+        match_type: string | null;
+        match_confidence: number | null;
+        has_batches: boolean;
+      }
+    >;
+    row_total: number;
+  }[];
+  column_totals: Record<string, number>;
+  generated_at: string;
 }
 
 @Injectable()
 export class DashboardService {
   constructor(private readonly dataSource: DataSource) {}
 
-  private resolveBrandId(current: JwtUser, requestedBrandId: string): string {
-    if (current.role === 'brand_manager') {
+  private resolveBrandId(
+    current: JwtUser,
+    requestedBrandId?: string | null,
+  ): string | null {
+    if (current.role === 'brand_manager' || current.role === 'supervisor') {
       if (current.brandId == null) {
-        throw new ForbiddenException('Brand manager has no brand');
+        throw new ForbiddenException('User has no brand scope');
       }
-      if (String(current.brandId) !== requestedBrandId) {
-        throw new ForbiddenException('Out of brand scope');
+      if (requestedBrandId != null && String(current.brandId) !== requestedBrandId) {
+        throw new ForbiddenException('Out of scoped brand');
       }
       return String(current.brandId);
     }
-    return requestedBrandId;
-  }
-
-  private getStatusList(status: MerchandiserDashboardQueryDto['status']) {
-    if (status === 'all') return ['approved', 'flagged'] as DashboardStatus[];
-    if (status === 'flagged') return ['flagged'] as DashboardStatus[];
-    return ['approved'] as DashboardStatus[];
-  }
-
-  private toIsoDate(date: Date) {
-    return date.toISOString().slice(0, 10);
-  }
-
-  private resolveDateRange(dateFrom?: string, dateTo?: string) {
-    const to = dateTo ? new Date(dateTo) : new Date();
-    const from = dateFrom
-      ? new Date(dateFrom)
-      : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-    return {
-      from: this.toIsoDate(from),
-      to: this.toIsoDate(to),
-    };
-  }
-
-  private isExpiringWithin30Days(expiryDate: string) {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const expiry = new Date(expiryDate);
-    expiry.setHours(0, 0, 0, 0);
-    const diffDays = Math.floor(
-      (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-    );
-    return diffDays >= 0 && diffDays <= 30;
+    return requestedBrandId ?? null;
   }
 
   private sanitizeSheetName(raw: string) {
     return raw.replace(/[\\/*?:[\]]/g, ' ').slice(0, 31);
   }
 
+  private today(): string {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  private daysAgo(n: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().split('T')[0];
+  }
+
   async getMerchandiserDashboard(
     current: JwtUser,
     query: MerchandiserDashboardQueryDto,
   ): Promise<MerchandiserDashboardResponse> {
-    const brandId = this.resolveBrandId(current, query.brandId);
-    const statusList = this.getStatusList(query.status);
-    const dateRange = this.resolveDateRange(query.dateFrom, query.dateTo);
+    const dateFrom = query.date_from ?? this.daysAgo(30);
+    const dateTo = query.date_to ?? this.today();
+    const statuses = query.status?.length
+      ? query.status
+      : ['approved', 'pending_review'];
 
-    const [brand] = await this.dataSource.query<
-      Array<{ id: string | number; name: string; slug: string }>
-    >('SELECT id, name, slug FROM brands WHERE id = $1', [brandId]);
-    if (!brand) {
-      throw new NotFoundException('Brand not found');
+    const brandId = this.resolveBrandId(current, query.brand_id);
+
+    if (brandId != null) {
+      const [brand] = await this.dataSource.query<Array<{ id: string }>>(
+        'SELECT id FROM brands WHERE id = $1 AND is_active = true LIMIT 1',
+        [brandId],
+      );
+      if (!brand) throw new NotFoundException('Brand not found');
     }
 
     const products = await this.dataSource.query<
-      Array<{ id: string | number; name: string }>
+      Array<{
+        id: string;
+        canonical_name: string;
+        sku: string | null;
+        sort_order: number | null;
+      }>
     >(
       `
-      SELECT p.id, p.canonical_name AS name
-      FROM products p
-      WHERE p.brand_id = $1
-        AND p.is_active = true
-        AND p.flow IN ('merchandiser', 'both')
-      ORDER BY p.canonical_name ASC
+      SELECT
+        id,
+        canonical_name,
+        sku,
+        COALESCE(sort_order, 999999) AS sort_order
+      FROM products
+      WHERE flow IN ('merchandiser', 'both')
+        AND is_active = true
+        ${brandId != null ? 'AND brand_id = $1' : ''}
+      ORDER BY COALESCE(sort_order, 999999), canonical_name
       `,
-      [brandId],
+      brandId != null ? [brandId] : [],
     );
 
-    const itemRows = await this.dataSource.query<
+    const params: unknown[] = [dateFrom, dateTo];
+    let paramIdx = 3;
+    const brandClause = brandId != null ? `AND pr.brand_id = $${paramIdx++}` : '';
+    const outletClause = query.outlet_id != null ? `AND pr.outlet_id = $${paramIdx++}` : '';
+    const reportedByClause =
+      query.reported_by != null ? `AND pr.reported_by = $${paramIdx++}` : '';
+    const statusPlaceholders = statuses
+      .map((_, i) => `$${paramIdx + i}`)
+      .join(', ');
+
+    if (brandId != null) params.push(brandId);
+    if (query.outlet_id != null) params.push(query.outlet_id);
+    if (query.reported_by != null) params.push(query.reported_by);
+    params.push(...statuses);
+
+    const pivotRows = await this.dataSource.query<
       Array<{
-        outlet_id: string | number;
+        outlet_id: string;
         outlet_name: string;
+        outlet_type: string;
         is_depot: boolean;
-        product_id: string | number;
+        region_name: string | null;
+        product_id: string;
         quantity: number | null;
         expiry_date: string | null;
         expiry_raw: string | null;
+        match_type: string | null;
+        match_confidence: number | null;
         report_date: string;
-        report_id: string | number;
-        status: DashboardStatus;
-        report_item_id: string;
+        status: string;
+        item_id: string;
+        has_batches: boolean;
       }>
     >(
       `
-      WITH latest_reports AS (
-        SELECT DISTINCT ON (pr.outlet_id)
-          pr.id AS report_id,
+      WITH ranked AS (
+        SELECT
           pr.outlet_id,
+          mri.product_id,
+          mri.quantity,
+          mri.expiry_date,
+          mri.expiry_raw,
+          mri.match_type,
+          mri.match_confidence,
           pr.report_date,
           pr.status,
-          mr.id AS merch_report_id
+          mri.id AS item_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY pr.outlet_id, mri.product_id
+            ORDER BY pr.report_date DESC, pr.created_at DESC
+          ) AS rn
         FROM parsed_reports pr
-        INNER JOIN merchandiser_reports mr ON mr.report_id = pr.id
-        WHERE pr.brand_id = $1
-          AND pr.report_type = 'merchandiser'
-          AND pr.report_date BETWEEN $2 AND $3
-          AND pr.status = ANY($4)
-        ORDER BY pr.outlet_id, pr.report_date DESC, pr.id DESC
+        JOIN merchandiser_reports mr ON mr.report_id = pr.id
+        JOIN merchandiser_report_items mri ON mri.merchandiser_report_id = mr.id
+        WHERE pr.report_type = 'merchandiser'
+          AND pr.report_date BETWEEN $1 AND $2
+          AND pr.status IN (${statusPlaceholders})
+          AND mri.product_id IS NOT NULL
+          ${brandClause}
+          ${outletClause}
+          ${reportedByClause}
       )
       SELECT
-        lr.outlet_id,
+        o.id AS outlet_id,
         o.name AS outlet_name,
+        o.type AS outlet_type,
         o.is_depot,
-        mri.product_id,
-        mri.quantity,
-        mri.expiry_date,
-        mri.expiry_raw,
-        lr.report_date,
-        lr.report_id,
-        lr.status,
-        mri.id AS report_item_id
-      FROM latest_reports lr
-      INNER JOIN outlets o ON o.id = lr.outlet_id
-      INNER JOIN merchandiser_report_items mri
-        ON mri.merchandiser_report_id = lr.merch_report_id
-      WHERE mri.is_product_matched = true
-        AND mri.product_id IS NOT NULL
-      ORDER BY o.name ASC, mri.product_id ASC
+        r.name AS region_name,
+        ranked.product_id,
+        ranked.quantity,
+        ranked.expiry_date,
+        ranked.expiry_raw,
+        ranked.match_type,
+        ranked.match_confidence,
+        ranked.report_date,
+        ranked.status,
+        ranked.item_id,
+        EXISTS (
+          SELECT 1
+          FROM merchandiser_report_item_batches b
+          WHERE b.report_item_id = ranked.item_id
+        ) AS has_batches
+      FROM ranked
+      JOIN outlets o ON o.id = ranked.outlet_id
+      LEFT JOIN regions r ON r.id = o.region_id
+      WHERE ranked.rn = 1
+      ORDER BY o.name, ranked.product_id
       `,
-      [brandId, dateRange.from, dateRange.to, statusList],
+      params,
     );
 
-    const reportItemIds = itemRows.map((row) => row.report_item_id);
-    let batchRows: Array<{
-      report_item_id: string;
-      quantity: number | null;
-      expiry_date: string | null;
-      expiry_raw: string | null;
-    }> = [];
+    const flagParams: unknown[] = [dateFrom, dateTo];
+    let flagIdx = 3;
+    const flagBrandClause = brandId != null ? `AND pr.brand_id = $${flagIdx++}` : '';
+    const flagOutletClause =
+      query.outlet_id != null ? `AND pr.outlet_id = $${flagIdx++}` : '';
+    const flagReportedByClause =
+      query.reported_by != null ? `AND pr.reported_by = $${flagIdx++}` : '';
+    const flagStatusPlaceholders = statuses
+      .map((_, i) => `$${flagIdx + i}`)
+      .join(', ');
+    if (brandId != null) flagParams.push(brandId);
+    if (query.outlet_id != null) flagParams.push(query.outlet_id);
+    if (query.reported_by != null) flagParams.push(query.reported_by);
+    flagParams.push(...statuses);
 
-    if (reportItemIds.length > 0) {
-      try {
-        batchRows = await this.dataSource.query<
-          Array<{
-            report_item_id: string;
-            quantity: number | null;
-            expiry_date: string | null;
-            expiry_raw: string | null;
-          }>
-        >(
-          `
-          SELECT
-            report_item_id::text AS report_item_id,
-            quantity,
-            expiry_date,
-            expiry_raw
-          FROM merchandiser_report_item_batches
-          WHERE report_item_id::text = ANY($1::text[])
-          ORDER BY report_item_id, expiry_date NULLS LAST, created_at ASC
-          `,
-          [reportItemIds],
-        );
-      } catch {
-        batchRows = [];
+    const flagRows = await this.dataSource.query<
+      Array<{ outlet_id: string; has_errors: boolean; has_pending: boolean }>
+    >(
+      `
+      SELECT
+        pr.outlet_id,
+        bool_or(rf.severity = 'error') AS has_errors,
+        bool_or(pr.status = 'pending_review') AS has_pending
+      FROM parsed_reports pr
+      LEFT JOIN report_flags rf ON rf.report_id = pr.id AND rf.status = 'open'
+      WHERE pr.report_type = 'merchandiser'
+        AND pr.report_date BETWEEN $1 AND $2
+        AND pr.status IN (${flagStatusPlaceholders})
+        ${flagBrandClause}
+        ${flagOutletClause}
+        ${flagReportedByClause}
+      GROUP BY pr.outlet_id
+      `,
+      flagParams,
+    );
+
+    const flagMap: Record<string, { has_flags: boolean; pending_review: boolean }> = {};
+    flagRows.forEach((row) => {
+      flagMap[String(row.outlet_id)] = {
+        has_flags: row.has_errors === true,
+        pending_review: row.has_pending === true,
+      };
+    });
+
+    const summaryParams: unknown[] = [dateFrom, dateTo];
+    let summaryIdx = 3;
+    const summaryBrandClause = brandId != null ? `AND pr.brand_id = $${summaryIdx++}` : '';
+    const summaryOutletClause =
+      query.outlet_id != null ? `AND pr.outlet_id = $${summaryIdx++}` : '';
+    const summaryReportedByClause =
+      query.reported_by != null ? `AND pr.reported_by = $${summaryIdx++}` : '';
+    const summaryStatusPlaceholders = statuses
+      .map((_, i) => `$${summaryIdx + i}`)
+      .join(', ');
+    if (brandId != null) summaryParams.push(brandId);
+    if (query.outlet_id != null) summaryParams.push(query.outlet_id);
+    if (query.reported_by != null) summaryParams.push(query.reported_by);
+    summaryParams.push(...statuses);
+
+    const [summary] = await this.dataSource.query<
+      Array<{
+        outlets_visited: string;
+        total_items_counted: string;
+        unmatched_products: string;
+        reports_pending_review: string;
+        last_report_at: string | null;
+      }>
+    >(
+      `
+      SELECT
+        COUNT(DISTINCT pr.outlet_id) AS outlets_visited,
+        COALESCE(SUM(mri.quantity), 0) AS total_items_counted,
+        COUNT(CASE WHEN mri.is_product_matched = false THEN 1 END) AS unmatched_products,
+        COUNT(CASE WHEN pr.status = 'pending_review' THEN 1 END) AS reports_pending_review,
+        MAX(pr.created_at) AS last_report_at
+      FROM parsed_reports pr
+      JOIN merchandiser_reports mr ON mr.report_id = pr.id
+      JOIN merchandiser_report_items mri ON mri.merchandiser_report_id = mr.id
+      WHERE pr.report_type = 'merchandiser'
+        AND pr.report_date BETWEEN $1 AND $2
+        AND pr.status IN (${summaryStatusPlaceholders})
+        ${summaryBrandClause}
+        ${summaryOutletClause}
+        ${summaryReportedByClause}
+      `,
+      summaryParams,
+    );
+
+    const outletMap: Record<
+      string,
+      MerchandiserDashboardResponse['rows'][number]
+    > = {};
+    for (const row of pivotRows) {
+      const outletKey = String(row.outlet_id);
+      if (!outletMap[outletKey]) {
+        outletMap[outletKey] = {
+          outlet_id: outletKey,
+          outlet_name: row.outlet_name,
+          outlet_type: row.outlet_type,
+          region_name: row.region_name ?? null,
+          is_depot: row.is_depot,
+          last_report_date: row.report_date,
+          has_flags: flagMap[outletKey]?.has_flags ?? false,
+          pending_review: flagMap[outletKey]?.pending_review ?? false,
+          cells: {},
+          row_total: 0,
+        };
+      }
+
+      outletMap[outletKey].cells[String(row.product_id)] = {
+        quantity: row.quantity,
+        expiry_date: row.expiry_date,
+        expiry_raw: row.expiry_raw,
+        report_date: row.report_date,
+        match_type: row.match_type,
+        match_confidence:
+          row.match_confidence != null ? Number(row.match_confidence) : null,
+        has_batches: row.has_batches === true,
+      };
+      outletMap[outletKey].row_total += Number(row.quantity ?? 0);
+
+      if (
+        outletMap[outletKey].last_report_date == null ||
+        row.report_date > outletMap[outletKey].last_report_date
+      ) {
+        outletMap[outletKey].last_report_date = row.report_date;
       }
     }
 
-    const batchesByItemId = new Map<string, DashboardBatch[]>();
-    for (const batch of batchRows) {
-      const currentBatches = batchesByItemId.get(batch.report_item_id) ?? [];
-      currentBatches.push({
-        quantity: batch.quantity,
-        expiryDate: batch.expiry_date,
-        expiryRaw: batch.expiry_raw,
+    const columnTotals: Record<string, number> = {};
+    Object.values(outletMap).forEach((outlet) => {
+      Object.entries(outlet.cells).forEach(([productId, cell]) => {
+        columnTotals[productId] = (columnTotals[productId] ?? 0) + (cell.quantity ?? 0);
       });
-      batchesByItemId.set(batch.report_item_id, currentBatches);
-    }
-
-    const rowsByOutletId = new Map<string, DashboardRow>();
-    for (const row of itemRows) {
-      const outletId = String(row.outlet_id);
-      const productId = String(row.product_id);
-      const existing = rowsByOutletId.get(outletId) ?? {
-        outletId: String(row.outlet_id),
-        outletName: row.outlet_name,
-        isDepot: row.is_depot,
-        cells: {},
-      };
-
-      const batches = batchesByItemId.get(row.report_item_id) ?? [];
-      const fallbackBatch =
-        batches.length > 0
-          ? batches
-          : [
-              {
-                quantity: row.quantity,
-                expiryDate: row.expiry_date,
-                expiryRaw: row.expiry_raw,
-              },
-            ];
-
-      existing.cells[productId] = {
-        quantity: row.quantity,
-        reportDate: row.report_date,
-        reportId: String(row.report_id),
-        expiryDate: row.expiry_date,
-        expiryRaw: row.expiry_raw,
-        hasMultipleBatches: fallbackBatch.length > 1,
-        batches: fallbackBatch,
-        status: row.status,
-      };
-      rowsByOutletId.set(outletId, existing);
-    }
-
-    const rows = Array.from(rowsByOutletId.values()).sort((a, b) =>
-      a.outletName.localeCompare(b.outletName),
-    );
-    const outlets = rows.map((row) => ({
-      id: row.outletId,
-      name: row.outletName,
-      isDepot: row.isDepot,
-    }));
-
-    const [selectedTotals] = await this.dataSource.query<
-      Array<{ total_reports: string }>
-    >(
-      `
-      SELECT COUNT(*)::text AS total_reports
-      FROM parsed_reports pr
-      WHERE pr.brand_id = $1
-        AND pr.report_type = 'merchandiser'
-        AND pr.report_date BETWEEN $2 AND $3
-        AND pr.status = ANY($4)
-      `,
-      [brandId, dateRange.from, dateRange.to, statusList],
-    );
-
-    const [allStatusSummary] = await this.dataSource.query<
-      Array<{
-        approved_count: string;
-        flagged_count: string;
-        last_report_date: string | null;
-      }>
-    >(
-      `
-      SELECT
-        COUNT(*) FILTER (WHERE pr.status = 'approved')::text AS approved_count,
-        COUNT(*) FILTER (WHERE pr.status = 'flagged')::text AS flagged_count,
-        MAX(pr.report_date)::text AS last_report_date
-      FROM parsed_reports pr
-      WHERE pr.brand_id = $1
-        AND pr.report_type = 'merchandiser'
-        AND pr.report_date BETWEEN $2 AND $3
-      `,
-      [brandId, dateRange.from, dateRange.to],
-    );
+    });
 
     return {
-      brand: {
-        id: String(brand.id),
-        name: brand.name,
-        slug: brand.slug,
+      summary: {
+        outlets_visited: Number(summary?.outlets_visited ?? 0),
+        total_items_counted: Number(summary?.total_items_counted ?? 0),
+        unmatched_products: Number(summary?.unmatched_products ?? 0),
+        reports_pending_review: Number(summary?.reports_pending_review ?? 0),
+        last_report_at: summary?.last_report_at ?? null,
       },
-      dateRange,
       products: products.map((product) => ({
         id: String(product.id),
-        name: product.name,
+        canonical_name: product.canonical_name,
+        sku: product.sku,
+        sort_order: Number(product.sort_order ?? 999999),
       })),
-      outlets,
-      rows,
-      summary: {
-        totalReports: parseInt(selectedTotals?.total_reports ?? '0', 10),
-        totalOutlets: outlets.length,
-        totalProducts: products.length,
-        approvedCount: parseInt(allStatusSummary?.approved_count ?? '0', 10),
-        flaggedCount: parseInt(allStatusSummary?.flagged_count ?? '0', 10),
-        lastReportDate: allStatusSummary?.last_report_date ?? null,
-      },
+      rows: Object.values(outletMap),
+      column_totals: columnTotals,
+      generated_at: new Date().toISOString(),
     };
   }
 
@@ -336,69 +374,24 @@ export class DashboardService {
 
     const workbook = new ExcelJS.Workbook();
     const sheetName = this.sanitizeSheetName(
-      `${dashboardData.brand.name} ${dashboardData.dateRange.from} - ${dashboardData.dateRange.to}`,
+      `Merchandiser ${query.date_from ?? this.daysAgo(30)} - ${query.date_to ?? this.today()}`,
     );
     const sheet = workbook.addWorksheet(sheetName);
 
-    sheet.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
-
     const headerRow = sheet.addRow([
       'Outlet',
-      ...dashboardData.products.map((product) => product.name),
+      ...dashboardData.products.map((product) => product.canonical_name),
     ]);
     headerRow.font = { bold: true };
-    headerRow.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFD9D9D9' },
-    };
 
     for (const row of dashboardData.rows) {
       const values = [
-        row.outletName,
+        row.outlet_name,
         ...dashboardData.products.map((product) => {
-          const cell = row.cells[product.id];
-          return cell?.quantity ?? '';
+          return row.cells[product.id]?.quantity ?? '';
         }),
       ];
-
-      const excelRow = sheet.addRow(values);
-      if (row.isDepot) {
-        excelRow.getCell(1).fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFF3F4F6' },
-        };
-      }
-
-      dashboardData.products.forEach((product, idx) => {
-        const reportCell = row.cells[product.id];
-        const excelCell = excelRow.getCell(idx + 2);
-
-        if (!reportCell || reportCell.quantity == null || reportCell.quantity === 0) {
-          excelCell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFFFC7CE' },
-          };
-          return;
-        }
-
-        if (reportCell.expiryDate && this.isExpiringWithin30Days(reportCell.expiryDate)) {
-          excelCell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFFFEB9C' },
-          };
-          return;
-        }
-
-        excelCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFC6EFCE' },
-        };
-      });
+      sheet.addRow(values);
     }
 
     sheet.getColumn(1).width = 30;

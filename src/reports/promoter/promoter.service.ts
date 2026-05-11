@@ -15,8 +15,8 @@ import { UpdatePromoterSaleItemDto } from './dto/update-promoter-sale-item.dto';
 import { UpdatePromoterSampleItemDto } from './dto/update-promoter-sample-item.dto';
 
 export interface PromoterListQuery {
-  brandId?: number;
-  outletId?: number;
+  brandId?: string;
+  outletId?: string;
   from?: string;
   to?: string;
   status?: string;
@@ -39,7 +39,7 @@ export class PromoterService {
   private applyBrandFilter(
     current: JwtUser,
     qb: SelectQueryBuilder<PromoterReport>,
-    brandParam?: number,
+    brandParam?: string,
   ) {
     if (current.role === 'brand_manager') {
       if (current.brandId == null) {
@@ -86,7 +86,7 @@ export class PromoterService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: number, current: JwtUser): Promise<PromoterReport> {
+  async findOne(id: string, current: JwtUser): Promise<PromoterReport> {
     const report = await this.prRepo.findOne({
       where: { id },
       relations: [
@@ -121,7 +121,7 @@ export class PromoterService {
   }
 
   async updateReport(
-    id: number,
+    id: string,
     dto: UpdatePromoterReportDto,
     current: JwtUser,
   ): Promise<PromoterReport> {
@@ -185,8 +185,8 @@ export class PromoterService {
   }
 
   async updateSaleItem(
-    reportId: number,
-    itemId: number,
+    reportId: string,
+    itemId: string,
     dto: UpdatePromoterSaleItemDto,
     current: JwtUser,
   ): Promise<PromoterSaleItem> {
@@ -258,8 +258,8 @@ export class PromoterService {
   }
 
   async updateSampleItem(
-    reportId: number,
-    itemId: number,
+    reportId: string,
+    itemId: string,
     dto: UpdatePromoterSampleItemDto,
     current: JwtUser,
   ): Promise<PromoterSampleItem> {

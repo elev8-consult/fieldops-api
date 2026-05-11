@@ -11,18 +11,18 @@ import { PromoterReport } from './promoter-report.entity';
 
 @Entity('promoter_sale_items')
 export class PromoterSaleItem {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'promoter_report_id', type: 'int' })
-  promoterReportId: number;
+  @Column({ name: 'promoter_report_id', type: 'uuid' })
+  promoterReportId: string;
 
   @ManyToOne(() => PromoterReport, (r) => r.saleItems, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'promoter_report_id' })
   promoterReport: PromoterReport;
 
-  @Column({ name: 'product_id', type: 'int', nullable: true })
-  productId: number | null;
+  @Column({ name: 'product_id', type: 'uuid', nullable: true })
+  productId: string | null;
 
   @ManyToOne(() => Product, { nullable: true })
   @JoinColumn({ name: 'product_id' })

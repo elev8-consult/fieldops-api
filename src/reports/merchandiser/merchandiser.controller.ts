@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Query,
@@ -36,14 +35,8 @@ export class MerchandiserController {
     @Query('limit') limit?: string,
   ) {
     return this.merchandiserService.list(current, {
-      brandId:
-        brandId != null && brandId !== ''
-          ? parseInt(brandId, 10)
-          : undefined,
-      outletId:
-        outletId != null && outletId !== ''
-          ? parseInt(outletId, 10)
-          : undefined,
+      brandId: brandId != null && brandId !== '' ? brandId : undefined,
+      outletId: outletId != null && outletId !== '' ? outletId : undefined,
       from,
       to,
       status,
@@ -58,7 +51,7 @@ export class MerchandiserController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.merchandiserService.findOne(id as unknown as number, current);
+    return this.merchandiserService.findOne(id, current);
   }
 
   @Patch(':id')
@@ -68,11 +61,7 @@ export class MerchandiserController {
     @Body() dto: UpdateMerchandiserReportDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.merchandiserService.updateReport(
-      id as unknown as number,
-      dto,
-      current,
-    );
+    return this.merchandiserService.updateReport(id, dto, current);
   }
 
   @Patch(':id/items/:itemId')
@@ -83,11 +72,6 @@ export class MerchandiserController {
     @Body() dto: UpdateMerchandiserItemDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.merchandiserService.updateItem(
-      id as unknown as number,
-      itemId as unknown as number,
-      dto,
-      current,
-    );
+    return this.merchandiserService.updateItem(id, itemId, dto, current);
   }
 }

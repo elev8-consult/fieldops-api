@@ -21,7 +21,7 @@ export class AnalyticsController {
   ) {
     return this.analyticsService.summary(
       current,
-      brandId != null && brandId !== '' ? parseInt(brandId, 10) : undefined,
+      brandId != null && brandId !== '' ? brandId : undefined,
       from,
       to,
     );
@@ -35,7 +35,7 @@ export class AnalyticsController {
   ) {
     return this.analyticsService.flaggedRate(
       current,
-      brandId != null && brandId !== '' ? parseInt(brandId, 10) : undefined,
+      brandId != null && brandId !== '' ? brandId : undefined,
     );
   }
 

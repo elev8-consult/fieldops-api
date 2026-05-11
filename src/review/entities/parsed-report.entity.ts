@@ -16,32 +16,32 @@ import { ReportFlag } from './report-flag.entity';
 
 @Entity('parsed_reports')
 export class ParsedReport {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'message_id', type: 'int' })
-  messageId: number;
+  @Column({ name: 'message_id', type: 'uuid' })
+  messageId: string;
 
   @ManyToOne(() => WhatsappMessage)
   @JoinColumn({ name: 'message_id' })
   message: WhatsappMessage;
 
-  @Column({ name: 'brand_id', type: 'int' })
-  brandId: number;
+  @Column({ name: 'brand_id', type: 'uuid' })
+  brandId: string;
 
   @ManyToOne(() => Brand)
   @JoinColumn({ name: 'brand_id' })
   brand: Brand;
 
-  @Column({ name: 'outlet_id', type: 'int', nullable: true })
-  outletId: number | null;
+  @Column({ name: 'outlet_id', type: 'uuid', nullable: true })
+  outletId: string | null;
 
   @ManyToOne(() => Outlet, { nullable: true })
   @JoinColumn({ name: 'outlet_id' })
   outlet: Outlet | null;
 
-  @Column({ name: 'reported_by', type: 'int', nullable: true })
-  reportedById: number | null;
+  @Column({ name: 'reported_by', type: 'uuid', nullable: true })
+  reportedById: string | null;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'reported_by' })

@@ -11,8 +11,8 @@ import { User } from '../../users/entities/user.entity';
 
 @Entity('whatsapp_messages')
 export class WhatsappMessage {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ name: 'wa_message_id', type: 'varchar', length: 255, unique: true })
   waMessageId: string;
@@ -56,8 +56,8 @@ export class WhatsappMessage {
   @Column({ name: 'processed_at', type: 'timestamptz', nullable: true })
   processedAt: Date | null;
 
-  @Column({ name: 'reviewed_by', type: 'int', nullable: true })
-  reviewedById: number | null;
+  @Column({ name: 'reviewed_by', type: 'uuid', nullable: true })
+  reviewedById: string | null;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'reviewed_by' })

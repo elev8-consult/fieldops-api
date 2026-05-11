@@ -1,13 +1,18 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 
 const FLOWS = ['merchandiser', 'promoter', 'both'] as const;
 
 export class UpdateProductDto {
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  brandId?: number;
+  @IsUUID()
+  brandId?: string;
 
   @IsOptional()
   @IsString()

@@ -10,11 +10,11 @@ import { User } from '../../users/entities/user.entity';
 
 @Entity('audit_logs')
 export class AuditLog {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ name: 'user_id', type: 'int', nullable: true })
-  userId: number | null;
+  @Column({ name: 'user_id', type: 'uuid', nullable: true })
+  userId: string | null;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'user_id' })
@@ -23,8 +23,8 @@ export class AuditLog {
   @Column({ name: 'entity_type', type: 'varchar', length: 128 })
   entityType: string;
 
-  @Column({ name: 'entity_id', type: 'int' })
-  entityId: number;
+  @Column({ name: 'entity_id', type: 'uuid' })
+  entityId: string;
 
   @Column({ type: 'varchar', length: 64 })
   action: string;

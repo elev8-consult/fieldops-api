@@ -1,12 +1,16 @@
-import { IsDateString, IsInt, IsOptional, IsString, ValidateIf } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsDateString,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpdateParsedReportDto {
   @IsOptional()
   @ValidateIf((_, v) => v !== undefined)
-  @Type(() => Number)
-  @IsInt()
-  outletId?: number | null;
+  @IsUUID()
+  outletId?: string | null;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== undefined)
