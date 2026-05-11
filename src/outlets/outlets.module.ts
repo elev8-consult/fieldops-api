@@ -3,11 +3,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Outlet } from './entities/outlet.entity';
 import { Region } from './entities/region.entity';
 import { OutletsController } from './outlets.controller';
+import { OutletsInternalController } from './outlets-internal.controller';
 import { OutletsService } from './outlets.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Outlet, Region])],
-  controllers: [OutletsController],
+  controllers: [OutletsController, OutletsInternalController],
   providers: [OutletsService],
   exports: [OutletsService],
 })
