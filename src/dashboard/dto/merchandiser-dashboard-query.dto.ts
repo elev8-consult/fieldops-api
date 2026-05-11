@@ -25,11 +25,7 @@ export class MerchandiserDashboardQueryDto {
   date_to?: string;
 
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value == null || value === '') return undefined;
-    if (Array.isArray(value)) return value;
-    return [value];
-  })
+  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
   @IsArray()
   @IsString({ each: true })
   status?: string[];
