@@ -13,6 +13,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import type { JwtUser } from '../../common/interfaces/jwt-user.interface';
+import { UpdateItemQuantityDto } from './dto/update-item-quantity.dto';
 import { UpdateMerchandiserItemDto } from './dto/update-merchandiser-item.dto';
 import { UpdateMerchandiserReportDto } from './dto/update-merchandiser-report.dto';
 import { MerchandiserService } from './merchandiser.service';
@@ -73,5 +74,16 @@ export class MerchandiserController {
     @CurrentUser() current: JwtUser,
   ) {
     return this.merchandiserService.updateItem(id, itemId, dto, current);
+  }
+
+  @Patch('items/:id')
+  @Roles('super_admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  updateItemQuantity(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateItemQuantityDto,
+    @CurrentUser() currentUser: JwtUser,
+  ) {
+    return this.merchandiserService.updateItemQuantity(id, dto, currentUser);
   }
 }

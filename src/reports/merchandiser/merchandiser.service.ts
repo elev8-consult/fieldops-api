@@ -10,6 +10,7 @@ import { JwtUser } from '../../common/interfaces/jwt-user.interface';
 import { ProductsService } from '../../products/products.service';
 import { MerchandiserReportItem } from './entities/merchandiser-report-item.entity';
 import { MerchandiserReport } from './entities/merchandiser-report.entity';
+import { UpdateItemQuantityDto } from './dto/update-item-quantity.dto';
 import { UpdateMerchandiserItemDto } from './dto/update-merchandiser-item.dto';
 import { UpdateMerchandiserReportDto } from './dto/update-merchandiser-report.dto';
 
@@ -261,5 +262,61 @@ export class MerchandiserService {
     }
 
     return this.itemRepo.save(item);
+  }
+
+  async updateItemQuantity(
+    itemId: string,
+    dto: UpdateItemQuantityDto,
+    currentUser: JwtUser,
+  ): Promise<{ success: boolean; item_id: string; new_quantity: number }> {
+    const item = await this.dataSource.query<
+      { id: string; quantity: number | null; merchandiser_report_id: string }[]
+    >(
+      `SELECT id, quantity, merchandiser_report_id
+       FROM merchandiser_report_items
+       WHERE id = $1`,
+      [itemId],
+    );
+
+    if (!item.length) {
+      throw new NotFoundException(`Item ${itemId} not found`);
+    }
+
+    const oldQuantity = item[0].quantity;
+    const newQuantity = dto.quantity;
+
+    await this.dataSource.query(
+      `UPDATE merchandiser_report_items
+       SET quantity = $1
+       WHERE id = $2`,
+      [newQuantity, itemId],
+    );
+
+    await this.dataSource.query(
+      `INSERT INTO audit_logs (
+        user_id,
+        entity_type,
+        entity_id,
+        action,
+        field_name,
+        old_value,
+        new_value
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        currentUser.id,
+        'merchandiser_report_item',
+        itemId,
+        'UPDATE',
+        'quantity',
+        oldQuantity !== null ? String(oldQuantity) : null,
+        String(newQuantity),
+      ],
+    );
+
+    return {
+      success: true,
+      item_id: itemId,
+      new_quantity: newQuantity,
+    };
   }
 }

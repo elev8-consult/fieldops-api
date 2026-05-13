@@ -30,6 +30,7 @@ interface MerchandiserDashboardResponse {
     cells: Record<
       string,
       {
+        item_id: string | null;
         quantity: number | null;
         expiry_date: string | null;
         expiry_raw: string | null;
@@ -309,6 +310,7 @@ export class DashboardService {
       }
 
       outletMap[outletKey].cells[String(row.product_id)] = {
+        item_id: row.item_id ?? null,
         quantity: row.quantity,
         expiry_date: row.expiry_date,
         expiry_raw: row.expiry_raw,
