@@ -7,7 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  UseGuards,
+  UseGuards
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -16,8 +16,6 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { BrandsService } from './brands.service';
 import { CreateBrandDto } from './dto/create-brand.dto';
-import { MatchBrandDto } from './dto/match-brand.dto';
-import type { MatchBrandResponseDto } from './dto/match-brand-response.dto';
 import { UpdateBrandDto } from './dto/update-brand.dto';
 
 @Controller('brands')
@@ -44,14 +42,6 @@ export class BrandsController {
   @Roles('super_admin')
   create(@Body() dto: CreateBrandDto) {
     return this.brandsService.create(dto);
-  }
-
-  @Post('match')
-  @UseGuards(JwtAuthGuard)
-  async matchBrand(
-    @Body() dto: MatchBrandDto,
-  ): Promise<MatchBrandResponseDto> {
-    return this.brandsService.matchBrand(dto.brand_raw);
   }
 
   @Patch(':id')
