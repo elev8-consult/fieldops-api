@@ -1,11 +1,5 @@
 import { Transform } from 'class-transformer';
-import {
-  IsArray,
-  IsDateString,
-  IsOptional,
-  IsString,
-  IsUUID,
-} from 'class-validator';
+import { IsDateString, IsOptional, IsUUID } from 'class-validator';
 
 export class MerchandiserDashboardQueryDto {
   @IsOptional()
@@ -23,12 +17,6 @@ export class MerchandiserDashboardQueryDto {
   @Transform(({ value, obj }) => value ?? obj.dateTo)
   @IsDateString()
   date_to?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
-  @IsArray()
-  @IsString({ each: true })
-  status?: string[];
 
   @IsOptional()
   @Transform(({ value }) => {

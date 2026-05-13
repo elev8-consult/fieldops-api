@@ -85,9 +85,6 @@ export class DashboardService {
   ): Promise<MerchandiserDashboardResponse> {
     const dateFrom = query.date_from ?? this.daysAgo(30);
     const dateTo = query.date_to ?? this.today();
-    const statuses = query.status?.length
-      ? query.status
-      : ['approved', 'pending_review'];
 
     const brandId = this.resolveBrandId(current, query.brand_id);
 
@@ -128,14 +125,10 @@ export class DashboardService {
     const outletClause = query.outlet_id != null ? `AND pr.outlet_id = $${paramIdx++}` : '';
     const reportedByClause =
       query.reported_by != null ? `AND pr.reported_by = $${paramIdx++}` : '';
-    const statusPlaceholders = statuses
-      .map((_, i) => `$${paramIdx + i}`)
-      .join(', ');
 
     if (brandId != null) params.push(brandId);
     if (query.outlet_id != null) params.push(query.outlet_id);
     if (query.reported_by != null) params.push(query.reported_by);
-    params.push(...statuses);
 
     const pivotRows = await this.dataSource.query<
       Array<{
@@ -178,7 +171,8 @@ export class DashboardService {
         JOIN merchandiser_report_items mri ON mri.merchandiser_report_id = mr.id
         WHERE pr.report_type = 'merchandiser'
           AND pr.report_date BETWEEN $1 AND $2
-          AND pr.status IN (${statusPlaceholders})
+          AND pr.brand_id IS NOT NULL
+          AND pr.outlet_id IS NOT NULL
           AND mri.product_id IS NOT NULL
           ${brandClause}
           ${outletClause}
@@ -220,13 +214,9 @@ export class DashboardService {
       query.outlet_id != null ? `AND pr.outlet_id = $${flagIdx++}` : '';
     const flagReportedByClause =
       query.reported_by != null ? `AND pr.reported_by = $${flagIdx++}` : '';
-    const flagStatusPlaceholders = statuses
-      .map((_, i) => `$${flagIdx + i}`)
-      .join(', ');
     if (brandId != null) flagParams.push(brandId);
     if (query.outlet_id != null) flagParams.push(query.outlet_id);
     if (query.reported_by != null) flagParams.push(query.reported_by);
-    flagParams.push(...statuses);
 
     const flagRows = await this.dataSource.query<
       Array<{ outlet_id: string; has_errors: boolean; has_pending: boolean }>
@@ -240,7 +230,6 @@ export class DashboardService {
       LEFT JOIN report_flags rf ON rf.report_id = pr.id AND rf.status = 'open'
       WHERE pr.report_type = 'merchandiser'
         AND pr.report_date BETWEEN $1 AND $2
-        AND pr.status IN (${flagStatusPlaceholders})
         ${flagBrandClause}
         ${flagOutletClause}
         ${flagReportedByClause}
@@ -264,13 +253,9 @@ export class DashboardService {
       query.outlet_id != null ? `AND pr.outlet_id = $${summaryIdx++}` : '';
     const summaryReportedByClause =
       query.reported_by != null ? `AND pr.reported_by = $${summaryIdx++}` : '';
-    const summaryStatusPlaceholders = statuses
-      .map((_, i) => `$${summaryIdx + i}`)
-      .join(', ');
     if (brandId != null) summaryParams.push(brandId);
     if (query.outlet_id != null) summaryParams.push(query.outlet_id);
     if (query.reported_by != null) summaryParams.push(query.reported_by);
-    summaryParams.push(...statuses);
 
     const [summary] = await this.dataSource.query<
       Array<{
@@ -293,7 +278,8 @@ export class DashboardService {
       JOIN merchandiser_report_items mri ON mri.merchandiser_report_id = mr.id
       WHERE pr.report_type = 'merchandiser'
         AND pr.report_date BETWEEN $1 AND $2
-        AND pr.status IN (${summaryStatusPlaceholders})
+        AND pr.brand_id IS NOT NULL
+        AND pr.outlet_id IS NOT NULL
         ${summaryBrandClause}
         ${summaryOutletClause}
         ${summaryReportedByClause}
