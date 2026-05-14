@@ -23,12 +23,12 @@ export class Outlet {
   @Column({ name: 'is_depot', type: 'boolean', default: false })
   isDepot: boolean;
 
-  @Column({ name: 'region_id', type: 'uuid' })
-  regionId: string;
+  @Column({ name: 'region_id', type: 'uuid', nullable: true })
+  regionId: string | null;
 
-  @ManyToOne(() => Region)
+  @ManyToOne(() => Region, { nullable: true })
   @JoinColumn({ name: 'region_id' })
-  region: Region;
+  region: Region | null;
 
   @Column({ type: 'text', nullable: true })
   address: string | null;

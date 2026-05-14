@@ -155,10 +155,10 @@ export class OutletsService {
     const outlet = this.outletRepo.create({
       name: dto.name,
       type: dto.type,
-      isDepot: dto.isDepot ?? false,
-      regionId: dto.regionId,
+      isDepot: dto.is_depot ?? false,
+      regionId: dto.region_id ?? null,
       address: dto.address ?? null,
-      isActive: true,
+      isActive: dto.is_active ?? true,
     });
     return this.outletRepo.save(outlet);
   }
@@ -170,10 +170,10 @@ export class OutletsService {
     }
     if (dto.name != null) outlet.name = dto.name;
     if (dto.type != null) outlet.type = dto.type;
-    if (dto.isDepot != null) outlet.isDepot = dto.isDepot;
-    if (dto.regionId != null) outlet.regionId = dto.regionId;
+    if (dto.is_depot != null) outlet.isDepot = dto.is_depot;
+    if (dto.region_id !== undefined) outlet.regionId = dto.region_id ?? null;
     if (dto.address !== undefined) outlet.address = dto.address;
-    if (dto.isActive != null) outlet.isActive = dto.isActive;
+    if (dto.is_active != null) outlet.isActive = dto.is_active;
     return this.outletRepo.save(outlet);
   }
 

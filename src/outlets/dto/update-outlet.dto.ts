@@ -1,43 +1,28 @@
-import {
-  IsBoolean,
-  IsIn,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MinLength,
-} from 'class-validator';
-
-const OUTLET_TYPES = [
-  'supermarket',
-  'minimarket',
-  'hypermarket',
-  'depot',
-  'other',
-] as const;
+import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { OutletType } from './create-outlet.dto';
 
 export class UpdateOutletDto {
   @IsOptional()
   @IsString()
-  @MinLength(1)
   name?: string;
 
   @IsOptional()
-  @IsIn([...OUTLET_TYPES])
-  type?: (typeof OUTLET_TYPES)[number];
+  @IsEnum(OutletType)
+  type?: OutletType;
 
   @IsOptional()
   @IsBoolean()
-  isDepot?: boolean;
+  is_depot?: boolean;
 
   @IsOptional()
   @IsUUID()
-  regionId?: string;
+  region_id?: string;
 
   @IsOptional()
   @IsString()
-  address?: string | null;
+  address?: string;
 
   @IsOptional()
   @IsBoolean()
-  isActive?: boolean;
+  is_active?: boolean;
 }

@@ -1,36 +1,41 @@
 import {
   IsBoolean,
-  IsIn,
+  IsEnum,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
-  MinLength,
 } from 'class-validator';
 
-const OUTLET_TYPES = [
-  'supermarket',
-  'minimarket',
-  'hypermarket',
-  'depot',
-  'other',
-] as const;
+export enum OutletType {
+  SUPERMARKET = 'supermarket',
+  MINIMARKET = 'minimarket',
+  HYPERMARKET = 'hypermarket',
+  DEPOT = 'depot',
+  OTHER = 'other',
+}
 
 export class CreateOutletDto {
   @IsString()
-  @MinLength(1)
+  @IsNotEmpty()
   name: string;
 
-  @IsIn([...OUTLET_TYPES])
-  type: (typeof OUTLET_TYPES)[number];
+  @IsEnum(OutletType)
+  type: OutletType;
 
   @IsOptional()
   @IsBoolean()
-  isDepot?: boolean;
+  is_depot?: boolean;
 
+  @IsOptional()
   @IsUUID()
-  regionId: string;
+  region_id?: string;
 
   @IsOptional()
   @IsString()
-  address?: string | null;
+  address?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
 }
