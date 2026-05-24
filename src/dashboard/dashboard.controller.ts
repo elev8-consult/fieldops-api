@@ -7,11 +7,15 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { MerchandiserDashboardQueryDto } from './dto/merchandiser-dashboard-query.dto';
 import { DashboardService } from './dashboard.service';
+import { PromoterDashboardService } from './promoter-dashboard.service';
 
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(
+    private readonly dashboardService: DashboardService,
+    private readonly promoterDashboardService: PromoterDashboardService,
+  ) {}
 
   @Get('merchandiser')
   @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
@@ -34,6 +38,31 @@ export class DashboardController {
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': 'attachment; filename="merchandiser-report.xlsx"',
+    });
+    res.send(file);
+  }
+
+  @Get('promoter')
+  @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
+  getPromoterDashboard(
+    @CurrentUser() current: JwtUser,
+    @Query() query: MerchandiserDashboardQueryDto,
+  ): Promise<unknown> {
+    return this.promoterDashboardService.getPromoterDashboard(current, query);
+  }
+
+  @Get('promoter/export')
+  @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
+  async exportPromoterExcel(
+    @CurrentUser() current: JwtUser,
+    @Query() query: MerchandiserDashboardQueryDto,
+    @Res() res: Response,
+  ) {
+    const file = await this.promoterDashboardService.exportToExcel(current, query);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="promoter-report.xlsx"',
     });
     res.send(file);
   }
