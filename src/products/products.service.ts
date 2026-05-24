@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,6 +11,7 @@ import { CreateAliasDto } from './dto/create-alias.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import {
   MatchProductsDto,
+  type MatchProductsResponse,
   type MatchResult,
 } from './dto/match-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -18,6 +20,8 @@ import { Product } from './entities/product.entity';
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
@@ -200,35 +204,38 @@ export class ProductsService {
     return rows[0] ? String(rows[0].id) : null;
   }
 
-  async matchProducts(dto: MatchProductsDto): Promise<MatchResult[]> {
-    if (!dto.items || dto.items.length === 0) return [];
-
-    const brandId = dto.brandId?.trim() || null;
-    let resolvedBrandId: string | null = brandId;
-
-    if (!resolvedBrandId && dto.brandRaw?.trim()) {
-      resolvedBrandId = await this.resolveBrandIdByRaw(dto.brandRaw);
+  async matchProducts(dto: MatchProductsDto): Promise<MatchProductsResponse> {
+    const items = dto.items;
+    if (!items || items.length === 0) {
+      return { results: [] };
     }
 
-    const results: MatchResult[] = [];
+    try {
+      const brandId = dto.brandId?.trim() || null;
+      let resolvedBrandId: string | null = brandId;
 
-    for (const item of dto.items) {
-      const originalRaw = item.product_name_raw ?? '';
-      const raw = originalRaw.trim();
-
-      if (!raw) {
-        results.push({
-          product_name_raw: originalRaw,
-          product_id: null,
-          canonical_name: null,
-          match_confidence: 0,
-          match_type: 'none',
-          suggestions: [],
-        });
-        continue;
+      if (!resolvedBrandId && dto.brandRaw?.trim()) {
+        resolvedBrandId = await this.resolveBrandIdByRaw(dto.brandRaw);
       }
 
-      try {
+      const results: MatchResult[] = [];
+
+      for (const item of items) {
+        const originalRaw = item.product_name_raw ?? '';
+        const raw = originalRaw.trim();
+
+        if (!raw) {
+          results.push({
+            product_name_raw: originalRaw,
+            product_id: null,
+            canonical_name: null,
+            match_confidence: 0,
+            match_type: 'none',
+            suggestions: [],
+          });
+          continue;
+        }
+
         const brandClause = resolvedBrandId ? 'AND p.brand_id::text = $2' : '';
         const baseParams = resolvedBrandId ? [raw, resolvedBrandId] : [raw];
 
@@ -303,6 +310,44 @@ export class ProductsService {
           baseParams,
         );
 
+        if (fuzzy.length === 0 && resolvedBrandId) {
+          const pattern = `%${raw}%`;
+          const ilike = await this.dataSource.query<
+            Array<{ id: string | number; canonical_name: string; brand_id: string }>
+          >(
+            `
+            SELECT p.id, p.canonical_name, p.brand_id
+            FROM products p
+            WHERE p.is_active = true
+              AND p.brand_id = $1
+              AND (
+                p.canonical_name ILIKE $2
+                OR EXISTS (
+                  SELECT 1 FROM product_aliases pa
+                  WHERE pa.product_id = p.id
+                    AND pa.alias ILIKE $2
+                )
+              )
+            LIMIT 5
+            `,
+            [resolvedBrandId, pattern],
+          );
+
+          results.push({
+            product_name_raw: originalRaw,
+            product_id: null,
+            canonical_name: null,
+            match_confidence: ilike.length > 0 ? 0.5 : 0,
+            match_type: ilike.length > 0 ? 'ilike' : 'none',
+            suggestions: ilike.map((row) => ({
+              product_id: String(row.id),
+              canonical_name: row.canonical_name,
+              confidence: 0.5,
+            })),
+          });
+          continue;
+        }
+
         const suggestions = fuzzy.map((row) => ({
           product_id: String(row.id),
           canonical_name: row.canonical_name,
@@ -330,19 +375,17 @@ export class ProductsService {
             suggestions,
           });
         }
-      } catch {
-        results.push({
-          product_name_raw: originalRaw,
-          product_id: null,
-          canonical_name: null,
-          match_confidence: 0,
-          match_type: 'none',
-          suggestions: [],
-        });
       }
-    }
 
-    return results;
+      return { results };
+    } catch (error) {
+      this.logger.error('products.match failed', { error } as any);
+      return {
+        results: [],
+        error: 'match_unavailable',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   }
 
   async matchProductBatch(
@@ -350,11 +393,12 @@ export class ProductsService {
     items: Array<{ product_name_raw: string }>,
     brandRaw?: string,
   ): Promise<MatchResult[]> {
-    return this.matchProducts({
+    const out = await this.matchProducts({
       brandId,
       brandRaw,
       items,
     });
+    return out.results;
   }
 
   private assertBrandProduct(current: JwtUser, productBrandId: string) {

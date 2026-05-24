@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,6 +14,8 @@ import { Brand } from './entities/brand.entity';
 
 @Injectable()
 export class BrandsService {
+  private readonly logger = new Logger(BrandsService.name);
+
   constructor(
     @InjectRepository(Brand)
     private readonly brandRepo: Repository<Brand>,
@@ -30,70 +33,110 @@ export class BrandsService {
       };
     }
 
-    const candidates = await this.dataSource.query<
-      { id: string; name: string; confidence: number }[]
-    >(
-      `
-      SELECT
-        id,
-        name,
-        CASE
-          WHEN lower(name) = lower($1)
-            THEN 1.0
-          WHEN lower(regexp_replace(name, '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
-             = lower(regexp_replace($1,   '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
-            THEN 0.95
-          WHEN lower(name) LIKE '%' || lower($1) || '%'
-            OR lower($1)   LIKE '%' || lower(name) || '%'
-            THEN 0.85
-          ELSE similarity(lower(name), lower($1))
-        END AS confidence
-      FROM brands
-      WHERE is_active = true
-        AND (
-          lower(name) LIKE '%' || lower($1) || '%'
-          OR lower($1) LIKE '%' || lower(name) || '%'
-          OR similarity(lower(name), lower($1)) > 0.3
-        )
-      ORDER BY confidence DESC
-      LIMIT 5
-      `,
-      [brandRaw.trim()],
-    );
+    try {
+      const candidates = await this.dataSource.query<
+        { id: string; name: string; confidence: number }[]
+      >(
+        `
+        SELECT
+          id,
+          name,
+          CASE
+            WHEN lower(name) = lower($1)
+              THEN 1.0
+            WHEN lower(regexp_replace(name, '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
+               = lower(regexp_replace($1,   '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
+              THEN 0.95
+            WHEN lower(name) LIKE '%' || lower($1) || '%'
+              OR lower($1)   LIKE '%' || lower(name) || '%'
+              THEN 0.85
+            ELSE similarity(lower(name), lower($1))
+          END AS confidence
+        FROM brands
+        WHERE is_active = true
+          AND (
+            lower(name) LIKE '%' || lower($1) || '%'
+            OR lower($1) LIKE '%' || lower(name) || '%'
+            OR similarity(lower(name), lower($1)) > 0.3
+          )
+        ORDER BY confidence DESC
+        LIMIT 5
+        `,
+        [brandRaw.trim()],
+      );
 
-    if (!candidates.length) {
+      if (!candidates.length) {
+        const ilike = await this.dataSource.query<
+          Array<{ id: string; name: string }>
+        >(
+          `
+          SELECT id, name
+          FROM brands
+          WHERE is_active = true
+            AND name ILIKE $1
+          LIMIT 5
+          `,
+          [`%${brandRaw.trim()}%`],
+        );
+
+        if (!ilike.length) {
+          return {
+            brand_id: null,
+            brand_name: null,
+            match_confidence: 0,
+            match_type: 'none',
+            suggestions: [],
+          };
+        }
+
+        return {
+          brand_id: null,
+          brand_name: null,
+          match_confidence: 0.5,
+          match_type: 'ilike',
+          suggestions: ilike.map((c) => ({
+            brand_id: c.id,
+            brand_name: c.name,
+            confidence: 0.5,
+          })),
+        };
+      }
+
+      const top = candidates[0];
+      const confidence = parseFloat(top.confidence as unknown as string);
+
+      const match_type: MatchBrandResponseDto['match_type'] =
+        confidence >= 1.0
+          ? 'exact'
+          : confidence >= 0.95
+            ? 'normalized'
+            : confidence >= 0.75
+              ? 'fuzzy'
+              : 'none';
+
+      return {
+        brand_id: match_type !== 'none' ? top.id : null,
+        brand_name: match_type !== 'none' ? top.name : null,
+        match_confidence: confidence,
+        match_type,
+        suggestions: candidates.map((c) => ({
+          brand_id: c.id,
+          brand_name: c.name,
+          confidence: parseFloat(c.confidence as unknown as string),
+        })),
+      };
+    } catch (error) {
+      this.logger.error('brands.match failed', { error } as any);
       return {
         brand_id: null,
         brand_name: null,
         match_confidence: 0,
         match_type: 'none',
         suggestions: [],
+        error: 'match_unavailable',
+        message: error instanceof Error ? error.message : 'Unknown error',
       };
     }
-
-    const top = candidates[0];
-    const confidence = parseFloat(top.confidence as unknown as string);
-
-    const match_type: MatchBrandResponseDto['match_type'] =
-      confidence >= 1.0
-        ? 'exact'
-        : confidence >= 0.95
-          ? 'normalized'
-          : confidence >= 0.75
-            ? 'fuzzy'
-            : 'none';
-
-    return {
-      brand_id: match_type !== 'none' ? top.id : null,
-      brand_name: match_type !== 'none' ? top.name : null,
-      match_confidence: confidence,
-      match_type,
-      suggestions: candidates.map((c) => ({
-        brand_id: c.id,
-        brand_name: c.name,
-        confidence: parseFloat(c.confidence as unknown as string),
-      })),
-    };
   }
 
   async findAll(current: JwtUser): Promise<Brand[]> {

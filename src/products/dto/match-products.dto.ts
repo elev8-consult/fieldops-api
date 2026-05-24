@@ -43,6 +43,12 @@ export interface MatchResult {
   product_id: string | null;
   canonical_name: string | null;
   match_confidence: number;
-  match_type: 'exact' | 'alias' | 'fuzzy' | 'none';
+  match_type: 'exact' | 'alias' | 'fuzzy' | 'ilike' | 'none';
   suggestions: MatchSuggestion[];
+}
+
+export interface MatchProductsResponse {
+  results: MatchResult[];
+  error?: 'match_unavailable';
+  message?: string;
 }

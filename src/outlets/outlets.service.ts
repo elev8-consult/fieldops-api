@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,6 +14,8 @@ import { Outlet } from './entities/outlet.entity';
 
 @Injectable()
 export class OutletsService {
+  private readonly logger = new Logger(OutletsService.name);
+
   constructor(
     @InjectRepository(Outlet)
     private readonly outletRepo: Repository<Outlet>,
@@ -36,39 +39,104 @@ export class OutletsService {
       };
     }
 
-    const candidates = await this.dataSource.query<
-      { id: string; name: string; is_depot: boolean; confidence: number }[]
-    >(
-      `
-      SELECT
-        id,
-        name,
-        is_depot,
-        CASE
-          WHEN lower(name) = lower($1)
-            THEN 1.0
-          WHEN lower(regexp_replace(name, '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
-             = lower(regexp_replace($1,   '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
-            THEN 0.95
-          WHEN lower(name) LIKE '%' || lower($1) || '%'
-            OR lower($1)   LIKE '%' || lower(name) || '%'
-            THEN 0.80
-          ELSE similarity(lower(name), lower($1))
-        END AS confidence
-      FROM outlets
-      WHERE is_active = true
-        AND (
-          lower(name) LIKE '%' || lower($1) || '%'
-          OR lower($1) LIKE '%' || lower(name) || '%'
-          OR similarity(lower(name), lower($1)) > 0.3
-        )
-      ORDER BY confidence DESC
-      LIMIT 5
-      `,
-      [locationRaw.trim()],
-    );
+    try {
+      const candidates = await this.dataSource.query<
+        { id: string; name: string; is_depot: boolean; confidence: number }[]
+      >(
+        `
+        SELECT
+          id,
+          name,
+          is_depot,
+          CASE
+            WHEN lower(name) = lower($1)
+              THEN 1.0
+            WHEN lower(regexp_replace(name, '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
+               = lower(regexp_replace($1,   '[^a-zA-Z0-9\\u0600-\\u06FF]', '', 'g'))
+              THEN 0.95
+            WHEN lower(name) LIKE '%' || lower($1) || '%'
+              OR lower($1)   LIKE '%' || lower(name) || '%'
+              THEN 0.80
+            ELSE similarity(lower(name), lower($1))
+          END AS confidence
+        FROM outlets
+        WHERE is_active = true
+          AND (
+            lower(name) LIKE '%' || lower($1) || '%'
+            OR lower($1) LIKE '%' || lower(name) || '%'
+            OR similarity(lower(name), lower($1)) > 0.3
+          )
+        ORDER BY confidence DESC
+        LIMIT 5
+        `,
+        [locationRaw.trim()],
+      );
 
-    if (!candidates.length) {
+      if (!candidates.length) {
+        const ilike = await this.dataSource.query<
+          Array<{ id: string; name: string }>
+        >(
+          `
+          SELECT id, name
+          FROM outlets
+          WHERE is_active = true
+            AND name ILIKE $1
+          LIMIT 5
+          `,
+          [`%${locationRaw.trim()}%`],
+        );
+
+        if (!ilike.length) {
+          return {
+            outlet_id: null,
+            outlet_name: null,
+            match_confidence: 0,
+            match_type: 'none',
+            is_depot: false,
+            suggestions: [],
+          };
+        }
+
+        return {
+          outlet_id: null,
+          outlet_name: null,
+          match_confidence: 0.5,
+          match_type: 'ilike',
+          is_depot: false,
+          suggestions: ilike.map((c) => ({
+            outlet_id: c.id,
+            outlet_name: c.name,
+            confidence: 0.5,
+          })),
+        };
+      }
+
+      const top = candidates[0];
+      const confidence = parseFloat(top.confidence as unknown as string);
+
+      const match_type: MatchOutletResponseDto['match_type'] =
+        confidence >= 1.0
+          ? 'exact'
+          : confidence >= 0.95
+            ? 'normalized'
+            : confidence >= 0.75
+              ? 'fuzzy'
+              : 'none';
+
+      return {
+        outlet_id: match_type !== 'none' ? top.id : null,
+        outlet_name: match_type !== 'none' ? top.name : null,
+        match_confidence: confidence,
+        match_type,
+        is_depot: top.is_depot ?? false,
+        suggestions: candidates.map((c) => ({
+          outlet_id: c.id,
+          outlet_name: c.name,
+          confidence: parseFloat(c.confidence as unknown as string),
+        })),
+      };
+    } catch (error) {
+      this.logger.error('outlets.match failed', { error } as any);
       return {
         outlet_id: null,
         outlet_name: null,
@@ -76,33 +144,10 @@ export class OutletsService {
         match_type: 'none',
         is_depot: false,
         suggestions: [],
+        error: 'match_unavailable',
+        message: error instanceof Error ? error.message : 'Unknown error',
       };
     }
-
-    const top = candidates[0];
-    const confidence = parseFloat(top.confidence as unknown as string);
-
-    const match_type: MatchOutletResponseDto['match_type'] =
-      confidence >= 1.0
-        ? 'exact'
-        : confidence >= 0.95
-          ? 'normalized'
-          : confidence >= 0.75
-            ? 'fuzzy'
-            : 'none';
-
-    return {
-      outlet_id: match_type !== 'none' ? top.id : null,
-      outlet_name: match_type !== 'none' ? top.name : null,
-      match_confidence: confidence,
-      match_type,
-      is_depot: top.is_depot ?? false,
-      suggestions: candidates.map((c) => ({
-        outlet_id: c.id,
-        outlet_name: c.name,
-        confidence: parseFloat(c.confidence as unknown as string),
-      })),
-    };
   }
 
   async findAll(
