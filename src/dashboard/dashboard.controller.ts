@@ -59,10 +59,12 @@ export class DashboardController {
     @Res() res: Response,
   ) {
     const file = await this.promoterDashboardService.exportToExcel(current, query);
+    const safeFrom = query.date_from ?? 'all';
+    const safeTo = query.date_to ?? 'all';
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="promoter-report.xlsx"',
+      'Content-Disposition': `attachment; filename="promoter-dashboard-${safeFrom}-${safeTo}.xlsx"`,
     });
     res.send(file);
   }
