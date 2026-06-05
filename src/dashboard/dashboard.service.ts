@@ -394,7 +394,11 @@ export class DashboardService {
           const expiry = cell.expiry_date
             ? this.fmtExcelDate(cell.expiry_date)
             : (cell.expiry_raw ?? '');
-          return expiry ? `${qty}\n${expiry}` : String(qty);
+          // show em-dash when stock is present but expiry is not recorded
+          if (cell.quantity !== null && cell.quantity > 0) {
+            return expiry ? `${qty}\n${expiry}` : `${qty}\n—`;
+          }
+          return String(qty);
         }),
       ]);
 
@@ -437,22 +441,25 @@ export class DashboardService {
   }
 
   private expiryFill(
-    cell: { quantity: number | null; expiry_date: string | null } | undefined,
+    cell: { quantity: number | null; expiry_date: string | null; expiry_raw?: string | null } | undefined,
   ): { type: 'pattern'; pattern: 'solid'; fgColor: { argb: string } } | null {
     if (!cell || cell.quantity === null || cell.quantity === 0) {
-      return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+      return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } }; // red-50: no stock
+    }
+    if (!cell.expiry_date && !cell.expiry_raw) {
+      return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; // slate-200: missing expiry
     }
     if (cell.expiry_date) {
       const days = Math.floor(
         (new Date(cell.expiry_date).getTime() - Date.now()) / 86_400_000,
       );
       if (days < 0) {
-        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; // red-100: expired
       }
       if (days <= 30) {
-        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEFCE8' } };
+        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEFCE8' } }; // yellow-50: expiring soon
       }
     }
-    return null;
+    return null; // white: OK
   }
 }
