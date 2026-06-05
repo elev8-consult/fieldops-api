@@ -366,22 +366,55 @@ export class DashboardService {
     );
     const sheet = workbook.addWorksheet(sheetName);
 
+    // ── Header row ──────────────────────────────────────────────────────────
     const headerRow = sheet.addRow([
       'Outlet',
-      ...dashboardData.products.map((product) => product.canonical_name),
+      ...dashboardData.products.map((p) => p.canonical_name),
     ]);
     headerRow.font = { bold: true };
+    headerRow.height = 20;
+    headerRow.eachCell((cell) => {
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+    });
+    headerRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
 
+    // ── Data rows ────────────────────────────────────────────────────────────
     for (const row of dashboardData.rows) {
-      const values = [
+      const excelRow = sheet.addRow([
         row.outlet_name,
         ...dashboardData.products.map((product) => {
-          return row.cells[product.id]?.quantity ?? '';
+          const cell = row.cells[product.id];
+          if (!cell) return '';
+          const qty = cell.quantity ?? '';
+          const expiry = cell.expiry_date
+            ? this.fmtExcelDate(cell.expiry_date)
+            : (cell.expiry_raw ?? '');
+          return expiry ? `${qty}\n${expiry}` : String(qty);
         }),
-      ];
-      sheet.addRow(values);
+      ]);
+
+      excelRow.height = 32;
+      excelRow.getCell(1).alignment = { vertical: 'middle' };
+
+      dashboardData.products.forEach((product, idx) => {
+        const cell = row.cells[product.id];
+        const excelCell = excelRow.getCell(idx + 2);
+        excelCell.alignment = {
+          wrapText: true,
+          horizontal: 'center',
+          vertical: 'middle',
+        };
+        const fill = this.expiryFill(cell);
+        if (fill) excelCell.fill = fill;
+      });
     }
 
+    // ── Column widths ────────────────────────────────────────────────────────
     sheet.getColumn(1).width = 30;
     dashboardData.products.forEach((_, idx) => {
       sheet.getColumn(idx + 2).width = 18;
@@ -389,5 +422,37 @@ export class DashboardService {
 
     const output = await workbook.xlsx.writeBuffer();
     return Buffer.isBuffer(output) ? output : Buffer.from(output);
+  }
+
+  private fmtExcelDate(dateStr: string): string {
+    try {
+      const d = new Date(dateStr);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = String(d.getFullYear()).slice(2);
+      return `${day}/${month}/${year}`;
+    } catch {
+      return dateStr;
+    }
+  }
+
+  private expiryFill(
+    cell: { quantity: number | null; expiry_date: string | null } | undefined,
+  ): { type: 'pattern'; pattern: 'solid'; fgColor: { argb: string } } | null {
+    if (!cell || cell.quantity === null || cell.quantity === 0) {
+      return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+    }
+    if (cell.expiry_date) {
+      const days = Math.floor(
+        (new Date(cell.expiry_date).getTime() - Date.now()) / 86_400_000,
+      );
+      if (days < 0) {
+        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+      }
+      if (days <= 30) {
+        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEFCE8' } };
+      }
+    }
+    return null;
   }
 }
