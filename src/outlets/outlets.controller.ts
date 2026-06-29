@@ -25,7 +25,14 @@ export class OutletsController {
   constructor(private readonly outletsService: OutletsService) {}
 
   @Get()
-  @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
+  @Roles(
+    'super_admin',
+    'brand_manager',
+    'supervisor',
+    'reviewer',
+    'merchandiser',
+    'promoter',
+  )
   findAll(
     @CurrentUser() current: JwtUser,
     @Query('region_id') regionId?: string,

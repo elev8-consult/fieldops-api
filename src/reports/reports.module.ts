@@ -10,6 +10,8 @@ import { PromoterSaleItem } from './promoter/entities/promoter-sale-item.entity'
 import { PromoterSampleItem } from './promoter/entities/promoter-sample-item.entity';
 import { PromoterController } from './promoter/promoter.controller';
 import { PromoterService } from './promoter/promoter.service';
+import { MobileController } from './mobile/mobile.controller';
+import { MobileService } from './mobile/mobile.service';
 
 @Module({
   imports: [
@@ -22,7 +24,7 @@ import { PromoterService } from './promoter/promoter.service';
       PromoterSampleItem,
     ]),
   ],
-  controllers: [MerchandiserController, PromoterController],
-  providers: [MerchandiserService, PromoterService],
+  controllers: [MerchandiserController, PromoterController, MobileController],
+  providers: [MerchandiserService, PromoterService, MobileService],
 })
 export class ReportsModule {}

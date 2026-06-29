@@ -23,11 +23,28 @@ export class User {
   @Column({ type: 'varchar', length: 255, unique: true })
   email: string;
 
-  @Column({ name: 'password_hash', type: 'varchar', length: 255, select: false })
-  passwordHash: string;
+  @Column({
+    name: 'password_hash',
+    type: 'varchar',
+    length: 255,
+    select: false,
+    nullable: true,
+  })
+  passwordHash: string | null;
 
   @Column({ type: 'varchar', length: 32 })
   role: string;
+
+  @Column({
+    name: 'approval_status',
+    type: 'varchar',
+    length: 16,
+    default: 'approved',
+  })
+  approvalStatus: string;
+
+  @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
+  lastLoginAt: Date | null;
 
   @Column({ name: 'brand_id', type: 'uuid', nullable: true })
   brandId: string | null;

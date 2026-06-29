@@ -158,9 +158,9 @@ export class OutletsService {
       search?: string;
     },
   ): Promise<Outlet[]> {
-    if (current.role === 'promoter' || current.role === 'merchandiser') {
-      throw new ForbiddenException();
-    }
+    // Field roles (merchandiser/promoter) use this read-only list in the
+    // mobile app to pick the outlet they are visiting.
+    void current;
 
     const qb = this.outletRepo
       .createQueryBuilder('o')
