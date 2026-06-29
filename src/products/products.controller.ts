@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,8 +9,11 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -17,8 +21,17 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateAliasDto } from './dto/create-alias.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { ImportCatalogDto } from './dto/import-catalog.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
+
+/** Minimal shape of a Multer file (avoids requiring @types/multer). */
+interface UploadedExcelFile {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+}
 
 @Controller('products')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -46,6 +59,36 @@ export class ProductsController {
       page:    isNaN(parsedPage)  ? 1   : parsedPage,
       limit:   isNaN(parsedLimit) ? 100 : parsedLimit,
     });
+  }
+
+  @Get('by-barcode/:barcode')
+  @UseGuards(JwtAuthGuard)
+  findByBarcode(@Param('barcode') barcode: string) {
+    return this.productsService.findByBarcode(barcode);
+  }
+
+  @Post('import')
+  @Roles('super_admin', 'brand_manager')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+    }),
+  )
+  importCatalog(
+    @UploadedFile() file: UploadedExcelFile | undefined,
+    @Body() dto: ImportCatalogDto,
+    @CurrentUser() current: JwtUser,
+  ) {
+    if (!file) {
+      throw new BadRequestException('An Excel file is required (field "file")');
+    }
+    const dryRun = dto.dryRun === 'true';
+    return this.productsService.importCatalog(
+      dto.brandId,
+      file.buffer,
+      current,
+      dryRun,
+    );
   }
 
   @Delete('aliases/:aliasId')

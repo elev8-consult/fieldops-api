@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -6,9 +7,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import * as ExcelJS from 'exceljs';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateAliasDto } from './dto/create-alias.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import type {
+  ImportCatalogResult,
+  ImportRowResult,
+} from './dto/import-catalog.dto';
 import {
   MatchProductsDto,
   type MatchProductsResponse,
@@ -525,6 +531,239 @@ export class ProductsService {
     }
 
     return this.productRepo.save(product);
+  }
+
+  async findByBarcode(barcode: string): Promise<Product> {
+    const normalized = (barcode ?? '').trim();
+    if (!normalized) {
+      throw new BadRequestException('Barcode is required');
+    }
+    const product = await this.productRepo.findOne({
+      where: { barcode: normalized, isActive: true },
+      relations: ['brand'],
+    });
+    if (!product) {
+      throw new NotFoundException('No product matches this barcode');
+    }
+    return product;
+  }
+
+  /**
+   * Bulk import a single brand's catalog from an uploaded Excel file.
+   * For each row: match an existing product in the brand (by SKU, then by
+   * canonical name) and set its barcode; if no match, create a new product.
+   * Barcodes are globally unique, so a barcode already used by a different
+   * product is reported as a conflict and left untouched.
+   */
+  async importCatalog(
+    brandId: string,
+    fileBuffer: Buffer,
+    current: JwtUser,
+    dryRun: boolean,
+  ): Promise<ImportCatalogResult> {
+    if (current.role === 'brand_manager' && current.brandId !== brandId) {
+      throw new ForbiddenException('Cannot import for another brand');
+    }
+
+    const brandExists = await this.dataSource.query<Array<{ id: string }>>(
+      `SELECT id FROM brands WHERE id::text = $1 LIMIT 1`,
+      [brandId],
+    );
+    if (brandExists.length === 0) {
+      throw new BadRequestException('Brand not found');
+    }
+
+    const parsed = await this.parseCatalogWorkbook(fileBuffer);
+
+    const result: ImportCatalogResult = {
+      brandId,
+      dryRun,
+      totalRows: parsed.length,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      conflicts: 0,
+      rows: [],
+    };
+
+    await this.dataSource.transaction(async (manager) => {
+      for (const r of parsed) {
+        const row: ImportRowResult = {
+          row: r.rowNumber,
+          productName: r.name,
+          sku: r.sku,
+          barcode: r.barcode,
+          status: 'skipped',
+        };
+
+        if (!r.name && !r.barcode) {
+          row.reason = 'Empty row';
+          result.skipped++;
+          result.rows.push(row);
+          continue;
+        }
+        if (!r.barcode) {
+          row.reason = 'Missing barcode';
+          result.skipped++;
+          result.rows.push(row);
+          continue;
+        }
+        if (!r.name) {
+          row.reason = 'Missing product name';
+          result.skipped++;
+          result.rows.push(row);
+          continue;
+        }
+
+        // Barcode must be globally unique. If it already belongs to another
+        // product, flag the conflict instead of stealing it.
+        const barcodeOwner = await manager.query<
+          Array<{ id: string; brand_id: string }>
+        >(
+          `SELECT id::text AS id, brand_id::text AS brand_id
+           FROM products WHERE barcode = $1 LIMIT 1`,
+          [r.barcode],
+        );
+
+        // Find an existing product in this brand: prefer SKU, then exact name.
+        let match: { id: string; barcode: string | null } | null = null;
+        if (r.sku) {
+          const bySku = await manager.query<
+            Array<{ id: string; barcode: string | null }>
+          >(
+            `SELECT id::text AS id, barcode FROM products
+             WHERE brand_id::text = $1 AND lower(sku) = lower($2)
+             LIMIT 1`,
+            [brandId, r.sku],
+          );
+          if (bySku[0]) match = bySku[0];
+        }
+        if (!match) {
+          const byName = await manager.query<
+            Array<{ id: string; barcode: string | null }>
+          >(
+            `SELECT id::text AS id, barcode FROM products
+             WHERE brand_id::text = $1 AND lower(canonical_name) = lower($2)
+             LIMIT 1`,
+            [brandId, r.name],
+          );
+          if (byName[0]) match = byName[0];
+        }
+
+        if (
+          barcodeOwner[0] &&
+          (!match || barcodeOwner[0].id !== match.id)
+        ) {
+          row.status = 'conflict';
+          row.productId = match?.id ?? null;
+          row.reason =
+            barcodeOwner[0].brand_id === brandId
+              ? 'Barcode already assigned to a different product'
+              : 'Barcode already used by a product in another brand';
+          result.conflicts++;
+          result.rows.push(row);
+          continue;
+        }
+
+        if (match) {
+          row.status = 'updated';
+          row.productId = match.id;
+          if (!dryRun) {
+            await manager.query(
+              `UPDATE products
+               SET barcode = $1,
+                   sku = COALESCE(NULLIF($2, ''), sku),
+                   updated_at = now()
+               WHERE id::text = $3`,
+              [r.barcode, r.sku ?? '', match.id],
+            );
+          }
+          result.updated++;
+        } else {
+          row.status = 'created';
+          if (!dryRun) {
+            const inserted = await manager.query<Array<{ id: string }>>(
+              `INSERT INTO products
+                 (brand_id, canonical_name, sku, barcode, flow, is_active)
+               VALUES ($1, $2, NULLIF($3, ''), $4, 'both', true)
+               RETURNING id::text AS id`,
+              [brandId, r.name, r.sku ?? '', r.barcode],
+            );
+            row.productId = inserted[0]?.id ?? null;
+          }
+          result.created++;
+        }
+
+        result.rows.push(row);
+      }
+    });
+
+    return result;
+  }
+
+  /** Parse the first worksheet into normalized rows. Header names are flexible. */
+  private async parseCatalogWorkbook(buffer: Buffer): Promise<
+    Array<{ rowNumber: number; name: string | null; sku: string | null; barcode: string | null }>
+  > {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.load(buffer as any);
+    } catch {
+      throw new BadRequestException('Could not read the Excel file');
+    }
+
+    const sheet = workbook.worksheets[0];
+    if (!sheet || sheet.rowCount === 0) {
+      throw new BadRequestException('The spreadsheet is empty');
+    }
+
+    const norm = (v: unknown) =>
+      String(v ?? '')
+        .toLowerCase()
+        .replace(/[\s_\-.]/g, '');
+
+    const nameKeys = ['name', 'productname', 'product', 'canonicalname', 'item', 'description', 'اسم', 'المنتج'];
+    const skuKeys = ['sku', 'code', 'productcode', 'itemcode', 'ref', 'reference', 'رمز'];
+    const barcodeKeys = ['barcode', 'gtin', 'ean', 'ean13', 'upc', 'code128', 'باركود'];
+
+    const headerRow = sheet.getRow(1);
+    const colMap: { name?: number; sku?: number; barcode?: number } = {};
+    headerRow.eachCell((cell, col) => {
+      const key = norm(cell.value);
+      if (!colMap.name && nameKeys.includes(key)) colMap.name = col;
+      else if (!colMap.sku && skuKeys.includes(key)) colMap.sku = col;
+      else if (!colMap.barcode && barcodeKeys.includes(key)) colMap.barcode = col;
+    });
+
+    if (!colMap.name || !colMap.barcode) {
+      throw new BadRequestException(
+        'Could not find required columns. Expected a "name"/"product" column and a "barcode"/"gtin" column in the first row.',
+      );
+    }
+
+    const cellStr = (row: ExcelJS.Row, col?: number): string | null => {
+      if (!col) return null;
+      const cell = row.getCell(col);
+      let v = cell.value;
+      if (v && typeof v === 'object' && 'text' in (v as any)) v = (v as any).text;
+      if (v && typeof v === 'object' && 'result' in (v as any)) v = (v as any).result;
+      const s = String(v ?? '').trim();
+      return s.length ? s : null;
+    };
+
+    const rows: Array<{ rowNumber: number; name: string | null; sku: string | null; barcode: string | null }> = [];
+    for (let i = 2; i <= sheet.rowCount; i++) {
+      const row = sheet.getRow(i);
+      const name = cellStr(row, colMap.name);
+      const sku = cellStr(row, colMap.sku);
+      let barcode = cellStr(row, colMap.barcode);
+      // Excel often stores barcodes as numbers → strip a trailing ".0"
+      if (barcode) barcode = barcode.replace(/\.0+$/, '');
+      if (!name && !sku && !barcode) continue; // truly blank line
+      rows.push({ rowNumber: i, name, sku, barcode });
+    }
+
+    return rows;
   }
 
   async softDelete(id: string, current: JwtUser): Promise<void> {

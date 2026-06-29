@@ -27,6 +27,9 @@ export class Product {
   @Column({ type: 'varchar', length: 255, nullable: true })
   sku: string | null;
 
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  barcode: string | null;
+
   @Column({ type: 'varchar', length: 32, default: 'both' })
   flow: string;
 
