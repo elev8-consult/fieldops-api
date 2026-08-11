@@ -169,7 +169,10 @@ export class DashboardService {
           pr.report_date,
           pr.status,
           mri.id AS item_id,
-          ROW_NUMBER() OVER (
+          -- DENSE_RANK (not ROW_NUMBER) so that when the same product is
+          -- listed on several lines of the SAME latest report, every line is
+          -- kept and shown as its own expiry lot.
+          DENSE_RANK() OVER (
             PARTITION BY pr.outlet_id, mri.product_id
             ORDER BY pr.report_date DESC, pr.created_at DESC
           ) AS rn
@@ -362,18 +365,53 @@ export class DashboardService {
         };
       }
 
-      outletMap[outletKey].cells[String(row.product_id)] = {
-        item_id: row.item_id ?? null,
-        quantity: row.quantity,
-        expiry_date: row.expiry_date,
-        expiry_raw: row.expiry_raw,
-        report_date: row.report_date,
-        match_type: row.match_type,
-        match_confidence:
-          row.match_confidence != null ? Number(row.match_confidence) : null,
-        has_batches: row.has_batches === true,
-        batches: row.item_id != null ? (batchMap[row.item_id] ?? []) : [],
-      };
+      const productKey = String(row.product_id);
+
+      // Each line becomes one or more "lots": either its explicit batch rows,
+      // or the line itself when it has none.
+      const rowBatches = row.item_id != null ? (batchMap[row.item_id] ?? []) : [];
+      const rowLots =
+        rowBatches.length > 0
+          ? rowBatches
+          : [
+              {
+                id: String(row.item_id ?? `${productKey}-${row.outlet_id}`),
+                quantity: row.quantity != null ? Number(row.quantity) : null,
+                expiry_date: row.expiry_date,
+                expiry_raw: row.expiry_raw,
+              },
+            ];
+
+      const existing = outletMap[outletKey].cells[productKey];
+
+      if (!existing) {
+        outletMap[outletKey].cells[productKey] = {
+          item_id: row.item_id ?? null,
+          quantity: row.quantity != null ? Number(row.quantity) : null,
+          expiry_date: row.expiry_date,
+          expiry_raw: row.expiry_raw,
+          report_date: row.report_date,
+          match_type: row.match_type,
+          match_confidence:
+            row.match_confidence != null ? Number(row.match_confidence) : null,
+          has_batches: rowBatches.length > 0,
+          batches: rowLots,
+        };
+      } else {
+        // Same product counted again on this report — merge the lots and sum.
+        existing.batches.push(...rowLots);
+        existing.quantity =
+          (existing.quantity ?? 0) + (row.quantity != null ? Number(row.quantity) : 0);
+        existing.has_batches = true;
+        // Surface the soonest expiry at the cell level.
+        if (
+          row.expiry_date != null &&
+          (existing.expiry_date == null || row.expiry_date < existing.expiry_date)
+        ) {
+          existing.expiry_date = row.expiry_date;
+        }
+      }
+
       outletMap[outletKey].row_total += Number(row.quantity ?? 0);
 
       if (
