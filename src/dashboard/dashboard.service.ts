@@ -38,6 +38,12 @@ interface MerchandiserDashboardResponse {
         match_type: string | null;
         match_confidence: number | null;
         has_batches: boolean;
+        batches: Array<{
+          id: string;
+          quantity: number | null;
+          expiry_date: string | null;
+          expiry_raw: string | null;
+        }>;
       }
     >;
     row_total: number;
@@ -288,6 +294,53 @@ export class DashboardService {
       summaryParams,
     );
 
+    // Per-item batches (a product counted in several expiry lots).
+    const visibleItemIds = pivotRows
+      .map((r) => r.item_id)
+      .filter((id): id is string => id != null);
+
+    const batchMap: Record<
+      string,
+      Array<{
+        id: string;
+        quantity: number | null;
+        expiry_date: string | null;
+        expiry_raw: string | null;
+      }>
+    > = {};
+
+    if (visibleItemIds.length > 0) {
+      const batchRows = await this.dataSource.query<
+        Array<{
+          id: string;
+          report_item_id: string;
+          quantity: number | null;
+          expiry_date: string | null;
+          expiry_raw: string | null;
+        }>
+      >(
+        `SELECT
+           b.id::text             AS id,
+           b.report_item_id::text AS report_item_id,
+           b.quantity             AS quantity,
+           b.expiry_date          AS expiry_date,
+           b.expiry_raw           AS expiry_raw
+         FROM merchandiser_report_item_batches b
+         WHERE b.report_item_id = ANY($1::uuid[])
+         ORDER BY b.expiry_date ASC NULLS LAST, b.id`,
+        [visibleItemIds],
+      );
+
+      for (const b of batchRows) {
+        (batchMap[b.report_item_id] ??= []).push({
+          id: b.id,
+          quantity: b.quantity != null ? Number(b.quantity) : null,
+          expiry_date: b.expiry_date,
+          expiry_raw: b.expiry_raw,
+        });
+      }
+    }
+
     const outletMap: Record<
       string,
       MerchandiserDashboardResponse['rows'][number]
@@ -319,6 +372,7 @@ export class DashboardService {
         match_confidence:
           row.match_confidence != null ? Number(row.match_confidence) : null,
         has_batches: row.has_batches === true,
+        batches: row.item_id != null ? (batchMap[row.item_id] ?? []) : [],
       };
       outletMap[outletKey].row_total += Number(row.quantity ?? 0);
 
