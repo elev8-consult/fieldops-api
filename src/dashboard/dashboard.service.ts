@@ -477,24 +477,43 @@ export class DashboardService {
 
     // ── Data rows ────────────────────────────────────────────────────────────
     for (const row of dashboardData.rows) {
-      const excelRow = sheet.addRow([
-        row.outlet_name,
-        ...dashboardData.products.map((product) => {
-          const cell = row.cells[product.id];
-          if (!cell) return '';
-          const qty = cell.quantity ?? '';
-          const expiry = cell.expiry_date
-            ? this.fmtExcelDate(cell.expiry_date)
-            : (cell.expiry_raw ?? '');
-          // show em-dash when stock is present but expiry is not recorded
-          if (cell.quantity !== null && cell.quantity > 0) {
-            return expiry ? `${qty}\n${expiry}` : `${qty}\n—`;
-          }
-          return String(qty);
-        }),
-      ]);
+      const values = dashboardData.products.map((product) => {
+        const cell = row.cells[product.id];
+        if (!cell) return '';
 
-      excelRow.height = 32;
+        const lots = cell.batches ?? [];
+
+        // Several expiry lots for the same product → one line per lot.
+        if (lots.length > 1) {
+          const lines = lots.map((lot) => {
+            const q = lot.quantity ?? '—';
+            const e = lot.expiry_date
+              ? this.fmtExcelDate(lot.expiry_date)
+              : (lot.expiry_raw ?? '—');
+            return `${q} · ${e}`;
+          });
+          return [`Total ${cell.quantity ?? 0}`, ...lines].join('\n');
+        }
+
+        const qty = cell.quantity ?? '';
+        const expiry = cell.expiry_date
+          ? this.fmtExcelDate(cell.expiry_date)
+          : (cell.expiry_raw ?? '');
+        // show em-dash when stock is present but expiry is not recorded
+        if (cell.quantity !== null && cell.quantity > 0) {
+          return expiry ? `${qty}\n${expiry}` : `${qty}\n—`;
+        }
+        return String(qty);
+      });
+
+      const excelRow = sheet.addRow([row.outlet_name, ...values]);
+
+      // Grow the row so every lot line stays readable.
+      const maxLines = values.reduce(
+        (max, v) => Math.max(max, String(v).split('\n').length),
+        1,
+      );
+      excelRow.height = Math.max(32, maxLines * 15);
       excelRow.getCell(1).alignment = { vertical: 'middle' };
 
       dashboardData.products.forEach((product, idx) => {
@@ -515,6 +534,87 @@ export class DashboardService {
     dashboardData.products.forEach((_, idx) => {
       sheet.getColumn(idx + 2).width = 18;
     });
+
+    // ── Detail sheet: one row per expiry lot ────────────────────────────────
+    const detail = workbook.addWorksheet('Stock detail');
+    const productNames = new Map(
+      dashboardData.products.map((p) => [p.id, p.canonical_name]),
+    );
+
+    const detailHeader = detail.addRow([
+      'Outlet',
+      'Region',
+      'Product',
+      'Quantity',
+      'Expiry',
+      'Days to expiry',
+      'Report date',
+    ]);
+    detailHeader.font = { bold: true };
+    detailHeader.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+    });
+
+    for (const row of dashboardData.rows) {
+      for (const [productId, cell] of Object.entries(row.cells)) {
+        const lots =
+          cell.batches && cell.batches.length > 0
+            ? cell.batches
+            : [
+                {
+                  id: productId,
+                  quantity: cell.quantity,
+                  expiry_date: cell.expiry_date,
+                  expiry_raw: cell.expiry_raw,
+                },
+              ];
+
+        for (const lot of lots) {
+          const days =
+            lot.expiry_date != null
+              ? Math.floor(
+                  (new Date(lot.expiry_date).getTime() - Date.now()) /
+                    86_400_000,
+                )
+              : null;
+
+          const detailRow = detail.addRow([
+            row.outlet_name,
+            row.region_name ?? '',
+            productNames.get(productId) ?? productId,
+            lot.quantity ?? '',
+            lot.expiry_date
+              ? this.fmtExcelDate(lot.expiry_date)
+              : (lot.expiry_raw ?? ''),
+            days ?? '',
+            cell.report_date ?? '',
+          ]);
+
+          const fill = this.expiryFill({
+            quantity: lot.quantity,
+            expiry_date: lot.expiry_date,
+            expiry_raw: lot.expiry_raw,
+          });
+          if (fill) detailRow.getCell(5).fill = fill;
+        }
+      }
+    }
+
+    detail.getColumn(1).width = 30;
+    detail.getColumn(2).width = 18;
+    detail.getColumn(3).width = 38;
+    detail.getColumn(4).width = 10;
+    detail.getColumn(5).width = 14;
+    detail.getColumn(6).width = 14;
+    detail.getColumn(7).width = 14;
+    detail.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: 7 },
+    };
 
     const output = await workbook.xlsx.writeBuffer();
     return Buffer.isBuffer(output) ? output : Buffer.from(output);
