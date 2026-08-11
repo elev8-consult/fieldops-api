@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -25,12 +26,16 @@ export class CreateUserDto {
   @IsString()
   whatsappPhone?: string;
 
+  /** Optional for mobile-only users (merchandiser/promoter) who log in by OTP. */
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
+  /** Not required for OTP (mobile) users — they have no password. */
+  @IsOptional()
   @IsString()
   @MinLength(8)
-  password: string;
+  password?: string;
 
   @IsEnum(ROLES)
   role: (typeof ROLES)[number];
@@ -38,4 +43,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsUUID()
   brandId?: string | null;
+
+  /** Outlets this mobile user may report on. */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  outletIds?: string[];
 }

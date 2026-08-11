@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsEmail,
   IsEnum,
@@ -47,4 +48,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Replaces the user's full outlet assignment list when provided. */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  outletIds?: string[];
 }

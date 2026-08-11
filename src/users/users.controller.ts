@@ -43,8 +43,17 @@ export class UsersController {
     return this.usersService.findOne(id, current);
   }
 
+  /** Outlets a mobile user is allowed to report on. */
+  @Get(':id/outlets')
+  @Roles('super_admin', 'brand_manager')
+  getOutlets(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.usersService.getAssignedOutletIds(id);
+  }
+
   @Post()
-  @Roles('super_admin')
+  @Roles('super_admin', 'brand_manager')
   create(@Body() dto: CreateUserDto, @CurrentUser() current: JwtUser) {
     return this.usersService.create(dto, current);
   }

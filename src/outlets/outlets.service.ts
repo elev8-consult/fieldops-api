@@ -158,15 +158,23 @@ export class OutletsService {
       search?: string;
     },
   ): Promise<Outlet[]> {
-    // Field roles (merchandiser/promoter) use this read-only list in the
-    // mobile app to pick the outlet they are visiting.
-    void current;
-
     const qb = this.outletRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.region', 'region')
       .where('o.is_active = true')
       .orderBy('o.name', 'ASC');
+
+    // Field roles (merchandiser/promoter) only see the outlets they are
+    // assigned to in the admin dashboard.
+    if (current.role === 'merchandiser' || current.role === 'promoter') {
+      qb.andWhere(
+        `EXISTS (
+           SELECT 1 FROM user_outlets uo
+           WHERE uo.outlet_id = o.id AND uo.user_id = :uid
+         )`,
+        { uid: current.id },
+      );
+    }
 
     if (filters.regionId != null) {
       qb.andWhere('o.region_id = :rid', { rid: filters.regionId });

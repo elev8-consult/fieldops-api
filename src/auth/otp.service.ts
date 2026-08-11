@@ -44,6 +44,19 @@ export class OtpService {
     return c && c.trim() ? c.trim() : null;
   }
 
+  /** The single phone allowed to bypass real OTP delivery (testing). */
+  private get devPhone(): string | null {
+    const p = this.config.get<string>('DEV_OTP_PHONE');
+    return p && p.trim() ? this.normalizePhone(p) : null;
+  }
+
+  /** True only for the configured test phone when a dev code is set. */
+  private isDevPhone(phone: string): boolean {
+    return (
+      this.devCode != null && this.devPhone != null && phone === this.devPhone
+    );
+  }
+
   private get ttlMinutes(): number {
     const n = parseInt(this.config.get<string>('OTP_TTL_MINUTES') ?? '5', 10);
     return Number.isFinite(n) && n > 0 ? n : 5;
@@ -161,15 +174,18 @@ export class OtpService {
   // ── Public API ──────────────────────────────────────────────────────────
   async requestOtp(rawPhone: string): Promise<{ channel: string | null }> {
     const phone = this.normalizePhone(rawPhone);
-    let user = await this.findActiveUser(phone);
 
+    // Test phone: skip delivery entirely, the fixed dev code is accepted.
+    if (this.isDevPhone(phone)) {
+      const existing = await this.findActiveUser(phone);
+      if (!existing) await this.provisionTestMerchandiser(phone);
+      return { channel: 'dev' };
+    }
+
+    const user = await this.findActiveUser(phone);
     if (!user) {
-      if (this.devCode) {
-        user = await this.provisionTestMerchandiser(phone);
-      } else {
-        // Don't reveal whether the number is registered.
-        return { channel: null };
-      }
+      // Number is not registered — never auto-create, never reveal.
+      return { channel: null };
     }
 
     const code = this.generateCode();
@@ -186,12 +202,6 @@ export class OtpService {
       }),
     );
 
-    if (this.devCode) {
-      this.logger.log(
-        `DEV mode: master code ${this.devCode} works for any phone (generated code for ${phone}: ${code})`,
-      );
-    }
-
     return { channel };
   }
 
@@ -199,7 +209,7 @@ export class OtpService {
     const phone = this.normalizePhone(rawPhone);
     let user = await this.findActiveUser(phone);
 
-    const masterOk = this.devCode != null && code === this.devCode;
+    const masterOk = this.isDevPhone(phone) && code === this.devCode;
 
     if (masterOk) {
       if (!user) user = await this.provisionTestMerchandiser(phone);
