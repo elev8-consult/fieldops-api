@@ -61,6 +61,13 @@ export class ProductsController {
     });
   }
 
+  /** Full barcode catalog for offline caching in the mobile app. */
+  @Get('catalog')
+  @UseGuards(JwtAuthGuard)
+  catalogForSync() {
+    return this.productsService.catalogForSync();
+  }
+
   @Get('by-barcode/:barcode')
   @UseGuards(JwtAuthGuard)
   findByBarcode(@Param('barcode') barcode: string) {

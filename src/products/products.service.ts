@@ -533,6 +533,62 @@ export class ProductsService {
     return this.productRepo.save(product);
   }
 
+  /**
+   * Lightweight barcode catalog for the mobile app to cache locally so
+   * scanning keeps working with no connectivity.
+   */
+  async catalogForSync(): Promise<{
+    syncedAt: string;
+    products: Array<{
+      id: string;
+      canonicalName: string;
+      sku: string | null;
+      barcode: string;
+      unit: string | null;
+      brandId: string;
+      brandName: string | null;
+    }>;
+  }> {
+    const rows = await this.dataSource.query<
+      Array<{
+        id: string;
+        canonical_name: string;
+        sku: string | null;
+        barcode: string;
+        unit: string | null;
+        brand_id: string;
+        brand_name: string | null;
+      }>
+    >(
+      `SELECT
+         p.id::text        AS id,
+         p.canonical_name  AS canonical_name,
+         p.sku             AS sku,
+         p.barcode         AS barcode,
+         p.unit            AS unit,
+         p.brand_id::text  AS brand_id,
+         b.name            AS brand_name
+       FROM products p
+       LEFT JOIN brands b ON b.id = p.brand_id
+       WHERE p.is_active = true
+         AND p.barcode IS NOT NULL
+       ORDER BY p.canonical_name`,
+    );
+
+    return {
+      syncedAt: new Date().toISOString(),
+      products: rows.map((r) => ({
+        id: r.id,
+        canonicalName: r.canonical_name,
+        sku: r.sku,
+        barcode: r.barcode,
+        unit: r.unit,
+        brandId: r.brand_id,
+        brandName: r.brand_name,
+      })),
+    };
+  }
+
   async findByBarcode(barcode: string): Promise<Product> {
     const normalized = (barcode ?? '').trim();
     if (!normalized) {
