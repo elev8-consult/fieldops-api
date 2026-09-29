@@ -63,9 +63,43 @@ export class OtpService {
   }
 
   private async findActiveUser(phone: string): Promise<User | null> {
-    return this.userRepo.findOne({
-      where: { whatsappPhone: phone, isActive: true },
+    return this.userRepo
+      .createQueryBuilder('u')
+      .addSelect('u.loginCodeHash')
+      .where('u.whatsapp_phone = :phone', { phone })
+      .andWhere('u.is_active = true')
+      .getOne();
+  }
+
+  private static readonly MAX_CODE_FAILURES = 10;
+  private static readonly LOCK_MINUTES = 15;
+
+  /** Check a user's permanent login code, locking after repeated failures. */
+  private async verifyLoginCode(user: User, code: string): Promise<void> {
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      throw new UnauthorizedException(
+        'Too many attempts. Try again in 15 minutes.',
+      );
+    }
+    const match = await bcrypt.compare(code, user.loginCodeHash ?? '');
+    if (match) {
+      if (user.failedLoginCount > 0 || user.lockedUntil) {
+        await this.userRepo.update(user.id, {
+          failedLoginCount: 0,
+          lockedUntil: null,
+        });
+      }
+      return;
+    }
+    const failures = user.failedLoginCount + 1;
+    const lock = failures >= OtpService.MAX_CODE_FAILURES;
+    await this.userRepo.update(user.id, {
+      failedLoginCount: lock ? 0 : failures,
+      lockedUntil: lock
+        ? new Date(Date.now() + OtpService.LOCK_MINUTES * 60_000)
+        : user.lockedUntil,
     });
+    throw new UnauthorizedException('Invalid or expired code');
   }
 
   /** Dev/testing convenience: provision a merchandiser for an unknown phone. */
@@ -188,6 +222,11 @@ export class OtpService {
       return { channel: null };
     }
 
+    // Users with a permanent login code already know it — nothing to send.
+    if (user.loginCodeHash) {
+      return { channel: 'static' };
+    }
+
     const code = this.generateCode();
     const codeHash = await bcrypt.hash(code, 10);
     const channel = await this.sendCode(phone, code);
@@ -213,6 +252,8 @@ export class OtpService {
 
     if (masterOk) {
       if (!user) user = await this.provisionTestMerchandiser(phone);
+    } else if (user?.loginCodeHash) {
+      await this.verifyLoginCode(user, code);
     } else {
       if (!user) throw new UnauthorizedException('Invalid or expired code');
 

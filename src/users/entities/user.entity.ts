@@ -32,6 +32,25 @@ export class User {
   })
   passwordHash: string | null;
 
+  /** Permanent mobile login code (bcrypt), accepted in place of an OTP. */
+  @Column({
+    name: 'login_code_hash',
+    type: 'varchar',
+    length: 255,
+    select: false,
+    nullable: true,
+  })
+  loginCodeHash: string | null;
+
+  @Column({ name: 'login_code_set_at', type: 'timestamptz', nullable: true })
+  loginCodeSetAt: Date | null;
+
+  @Column({ name: 'failed_login_count', type: 'int', default: 0 })
+  failedLoginCount: number;
+
+  @Column({ name: 'locked_until', type: 'timestamptz', nullable: true })
+  lockedUntil: Date | null;
+
   @Column({ type: 'varchar', length: 32 })
   role: string;
 

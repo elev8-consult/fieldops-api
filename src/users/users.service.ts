@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
 import { Repository } from 'typeorm';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -227,6 +229,55 @@ export class UsersService {
     }
 
     return saved;
+  }
+
+  private async findMobileUserInScope(
+    id: string,
+    current: JwtUser,
+  ): Promise<User> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (current.role === 'brand_manager') {
+      this.assertBrandManagerScope(current, user.brandId);
+    } else if (current.role !== 'super_admin') {
+      throw new ForbiddenException();
+    }
+    if (!MOBILE_ROLES.includes(user.role)) {
+      throw new BadRequestException('Login codes are only for app users');
+    }
+    return user;
+  }
+
+  /**
+   * Issue a new permanent 6-digit mobile login code, replacing any previous
+   * one. The plain code is returned only here; only its hash is stored.
+   */
+  async generateLoginCode(
+    id: string,
+    current: JwtUser,
+  ): Promise<{ code: string }> {
+    const user = await this.findMobileUserInScope(id, current);
+    const code = String(randomInt(100000, 1000000));
+    await this.userRepo.update(user.id, {
+      loginCodeHash: await bcrypt.hash(code, 10),
+      loginCodeSetAt: new Date(),
+      failedLoginCount: 0,
+      lockedUntil: null,
+    });
+    return { code };
+  }
+
+  /** Remove the permanent code so the user falls back to WhatsApp OTP. */
+  async clearLoginCode(id: string, current: JwtUser): Promise<void> {
+    const user = await this.findMobileUserInScope(id, current);
+    await this.userRepo.update(user.id, {
+      loginCodeHash: null,
+      loginCodeSetAt: null,
+      failedLoginCount: 0,
+      lockedUntil: null,
+    });
   }
 
   async softDelete(id: string, current: JwtUser): Promise<void> {

@@ -68,6 +68,25 @@ export class UsersController {
     return this.usersService.update(id, dto, current);
   }
 
+  /** Issue a new permanent mobile login code; the plain code is shown once. */
+  @Post(':id/login-code')
+  @Roles('super_admin', 'brand_manager')
+  generateLoginCode(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() current: JwtUser,
+  ) {
+    return this.usersService.generateLoginCode(id, current);
+  }
+
+  @Delete(':id/login-code')
+  @Roles('super_admin', 'brand_manager')
+  clearLoginCode(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() current: JwtUser,
+  ) {
+    return this.usersService.clearLoginCode(id, current);
+  }
+
   @Delete(':id')
   @Roles('super_admin')
   remove(
