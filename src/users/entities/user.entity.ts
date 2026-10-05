@@ -17,7 +17,12 @@ export class User {
   @Column({ name: 'full_name', type: 'varchar', length: 255 })
   fullName: string;
 
-  @Column({ name: 'whatsapp_phone', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'whatsapp_phone',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   whatsappPhone: string | null;
 
   @Column({ type: 'varchar', length: 255, unique: true })

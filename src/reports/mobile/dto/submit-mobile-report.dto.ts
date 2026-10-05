@@ -38,6 +38,13 @@ export class SubmitMobileReportDto {
   @IsUUID()
   outletId: string;
 
+  /** Client-generated id so offline retries do not create duplicate reports. */
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9_-]{8,64}$/, {
+    message: 'clientSubmissionId must be 8-64 letters, digits, - or _',
+  })
+  clientSubmissionId?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

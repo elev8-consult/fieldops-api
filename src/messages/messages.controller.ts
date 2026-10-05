@@ -6,7 +6,9 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { scopedBrandFilter } from '../common/brand-scope';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { parseLimit, parsePage } from '../common/pagination';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -19,29 +21,27 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @Roles('super_admin', 'brand_manager', 'supervisor', 'reviewer')
   findAll(
-    @Query('status')       status?:      string,
-    @Query('report_type')  reportType?:  string,
-    @Query('brand_id')     brandId?:     string,
+    @CurrentUser() current: JwtUser,
+    @Query('status') status?: string,
+    @Query('report_type') reportType?: string,
+    @Query('brand_id') brandId?: string,
     @Query('sender_phone') senderPhone?: string,
-    @Query('from')         from?:        string,
-    @Query('to')           to?:          string,
-    @Query('page')         page?:        string,
-    @Query('limit')        limit?:       string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    const parsedPage  = page  ? parseInt(page,  10) : 1;
-    const parsedLimit = limit ? parseInt(limit, 10) : 20;
-
     return this.messagesService.findAll({
       status,
       reportType,
-      brandId:     brandId     || undefined,
+      brandId: scopedBrandFilter(current, brandId),
       senderPhone: senderPhone || undefined,
-      from:        from        || undefined,
-      to:          to          || undefined,
-      page:        isNaN(parsedPage)  ? 1  : parsedPage,
-      limit:       isNaN(parsedLimit) ? 20 : parsedLimit,
+      from: from || undefined,
+      to: to || undefined,
+      page: parsePage(page),
+      limit: parseLimit(limit, 20),
     });
   }
 

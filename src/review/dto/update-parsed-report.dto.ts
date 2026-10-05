@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsOptional,
   IsString,
@@ -7,6 +8,14 @@ import {
 } from 'class-validator';
 
 export class UpdateParsedReportDto {
+  @IsOptional()
+  @IsUUID()
+  brandId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isDepotReport?: boolean;
+
   @IsOptional()
   @ValidateIf((_, v) => v !== undefined)
   @IsUUID()

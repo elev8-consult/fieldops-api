@@ -9,66 +9,75 @@ import {
 import { QueryFailedError } from 'typeorm';
 import { Request, Response } from 'express';
 
+/**
+ * HttpExceptions keep Nest's default body ({ statusCode, message, error }) so
+ * the web and mobile apps can keep reading `message`. Database and unexpected
+ * errors get a safe message instead of internals.
+ */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost) {
-    const ctx      = host.switchToHttp();
+    const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request  = ctx.getRequest<Request>();
-
-    let status  = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: string | object = 'Internal server error';
+    const request = ctx.getRequest<Request>();
 
     if (exception instanceof HttpException) {
-      status  = exception.getStatus();
-      message = exception.getResponse();
+      const status = exception.getStatus();
+      const body = exception.getResponse();
+      response
+        .status(status)
+        .json(
+          typeof body === 'string'
+            ? { statusCode: status, message: body }
+            : body,
+        );
+      return;
+    }
 
-    } else if (exception instanceof QueryFailedError) {
-      const err = exception as any;
+    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let message = 'Internal server error';
 
+    if (exception instanceof QueryFailedError) {
+      const err = exception as QueryFailedError & { code?: string };
       this.logger.error(
         `QueryFailedError [${err.code}] on ${request.method} ${request.url}: ${err.message}`,
       );
 
       switch (err.code) {
         case '22P02':
-          status  = HttpStatus.BAD_REQUEST;
-          message = `Invalid ID format. Value received: "${
-            err.parameters?.[0] ?? 'unknown'
-          }". Expected a valid UUID.`;
+          status = HttpStatus.BAD_REQUEST;
+          message = 'Invalid ID or value format.';
           break;
         case '23502':
-          status  = HttpStatus.BAD_REQUEST;
-          message = `Missing required field: ${err.column ?? 'unknown'}`;
+          status = HttpStatus.BAD_REQUEST;
+          message = 'A required field is missing.';
           break;
         case '23505':
-          status  = HttpStatus.CONFLICT;
+          status = HttpStatus.CONFLICT;
           message = 'A record with this value already exists.';
           break;
         case '23503':
-          status  = HttpStatus.BAD_REQUEST;
+          status = HttpStatus.BAD_REQUEST;
           message = 'Referenced record does not exist.';
           break;
-        default:
-          status  = HttpStatus.BAD_REQUEST;
-          message = `Database error [${err.code}]: ${err.message ?? 'unknown'}`;
       }
-
-    } else if (exception instanceof Error) {
+    } else {
+      const err = exception instanceof Error ? exception : null;
       this.logger.error(
-        `Unhandled error on ${request.method} ${request.url}: ${exception.message}`,
-        exception.stack,
+        `Unhandled error on ${request.method} ${request.url}: ${err?.message ?? String(exception)}`,
+        err?.stack,
       );
-      message = exception.message;
     }
 
     response.status(status).json({
       statusCode: status,
       message,
-      path:       request.url,
-      timestamp:  new Date().toISOString(),
+      error:
+        status === HttpStatus.INTERNAL_SERVER_ERROR
+          ? 'Internal Server Error'
+          : undefined,
     });
   }
 }

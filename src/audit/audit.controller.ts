@@ -1,4 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,8 +30,9 @@ export class AuditController {
   async list(
     @CurrentUser() current: JwtUser,
     @Query('entity_type') entityType?: string,
-    @Query('entity_id') entityId?: string,
-    @Query('user_id') userId?: string,
+    @Query('entity_id', new ParseUUIDPipe({ optional: true }))
+    entityId?: string,
+    @Query('user_id', new ParseUUIDPipe({ optional: true })) userId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -44,10 +51,10 @@ export class AuditController {
       qb.andWhere('a.entity_type = :et', { et: entityType });
     }
     if (entityId != null && entityId !== '') {
-      qb.andWhere('a.entity_id = :eid', { eid: parseInt(entityId, 10) });
+      qb.andWhere('a.entity_id = :eid', { eid: entityId });
     }
     if (userId != null && userId !== '') {
-      qb.andWhere('a.user_id = :uid', { uid: parseInt(userId, 10) });
+      qb.andWhere('a.user_id = :uid', { uid: userId });
     }
 
     if (current.role === 'brand_manager') {

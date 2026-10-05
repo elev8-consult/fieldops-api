@@ -111,7 +111,12 @@ export class ProductsService {
     }
 
     const fuzzyResults = await this.dataSource.query<
-      { product_id: string; canonical_name: string; sim: number; source: string }[]
+      {
+        product_id: string;
+        canonical_name: string;
+        sim: number;
+        source: string;
+      }[]
     >(
       `WITH canonical_sims AS (
          SELECT
@@ -299,7 +304,11 @@ export class ProductsService {
         }
 
         const fuzzy = await this.dataSource.query<
-          Array<{ id: string | number; canonical_name: string; score: string | number }>
+          Array<{
+            id: string | number;
+            canonical_name: string;
+            score: string | number;
+          }>
         >(
           `
           SELECT
@@ -319,7 +328,11 @@ export class ProductsService {
         if (fuzzy.length === 0 && resolvedBrandId) {
           const pattern = `%${raw}%`;
           const ilike = await this.dataSource.query<
-            Array<{ id: string | number; canonical_name: string; brand_id: string }>
+            Array<{
+              id: string | number;
+              canonical_name: string;
+              brand_id: string;
+            }>
           >(
             `
             SELECT p.id, p.canonical_name, p.brand_id
@@ -385,7 +398,10 @@ export class ProductsService {
 
       return { results };
     } catch (error) {
-      this.logger.error('products.match failed', { error } as any);
+      this.logger.error(
+        'products.match failed',
+        error instanceof Error ? error.stack : String(error),
+      );
       return {
         results: [],
         error: 'match_unavailable',
@@ -421,13 +437,7 @@ export class ProductsService {
     page?: number;
     limit?: number;
   }) {
-    const {
-      brandId,
-      flow,
-      search,
-      page = 1,
-      limit = 100,
-    } = filters ?? {};
+    const { brandId, flow, search, page = 1, limit = 100 } = filters ?? {};
 
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -706,10 +716,7 @@ export class ProductsService {
           if (byName[0]) match = byName[0];
         }
 
-        if (
-          barcodeOwner[0] &&
-          (!match || barcodeOwner[0].id !== match.id)
-        ) {
+        if (barcodeOwner[0] && (!match || barcodeOwner[0].id !== match.id)) {
           row.status = 'conflict';
           row.productId = match?.id ?? null;
           row.reason =
@@ -759,11 +766,16 @@ export class ProductsService {
 
   /** Parse the first worksheet into normalized rows. Header names are flexible. */
   private async parseCatalogWorkbook(buffer: Buffer): Promise<
-    Array<{ rowNumber: number; name: string | null; sku: string | null; barcode: string | null }>
+    Array<{
+      rowNumber: number;
+      name: string | null;
+      sku: string | null;
+      barcode: string | null;
+    }>
   > {
     const workbook = new ExcelJS.Workbook();
     try {
-      await workbook.xlsx.load(buffer as any);
+      await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
     } catch {
       throw new BadRequestException('Could not read the Excel file');
     }
@@ -774,13 +786,38 @@ export class ProductsService {
     }
 
     const norm = (v: unknown) =>
-      String(v ?? '')
+      (typeof v === 'string' || typeof v === 'number' ? String(v) : '')
         .toLowerCase()
         .replace(/[\s_\-.]/g, '');
 
-    const nameKeys = ['name', 'productname', 'product', 'canonicalname', 'item', 'description', 'اسم', 'المنتج'];
-    const skuKeys = ['sku', 'code', 'productcode', 'itemcode', 'ref', 'reference', 'رمز'];
-    const barcodeKeys = ['barcode', 'gtin', 'ean', 'ean13', 'upc', 'code128', 'باركود'];
+    const nameKeys = [
+      'name',
+      'productname',
+      'product',
+      'canonicalname',
+      'item',
+      'description',
+      'اسم',
+      'المنتج',
+    ];
+    const skuKeys = [
+      'sku',
+      'code',
+      'productcode',
+      'itemcode',
+      'ref',
+      'reference',
+      'رمز',
+    ];
+    const barcodeKeys = [
+      'barcode',
+      'gtin',
+      'ean',
+      'ean13',
+      'upc',
+      'code128',
+      'باركود',
+    ];
 
     const headerRow = sheet.getRow(1);
     const colMap: { name?: number; sku?: number; barcode?: number } = {};
@@ -788,7 +825,8 @@ export class ProductsService {
       const key = norm(cell.value);
       if (!colMap.name && nameKeys.includes(key)) colMap.name = col;
       else if (!colMap.sku && skuKeys.includes(key)) colMap.sku = col;
-      else if (!colMap.barcode && barcodeKeys.includes(key)) colMap.barcode = col;
+      else if (!colMap.barcode && barcodeKeys.includes(key))
+        colMap.barcode = col;
     });
 
     if (!colMap.name || !colMap.barcode) {
@@ -800,14 +838,23 @@ export class ProductsService {
     const cellStr = (row: ExcelJS.Row, col?: number): string | null => {
       if (!col) return null;
       const cell = row.getCell(col);
-      let v = cell.value;
-      if (v && typeof v === 'object' && 'text' in (v as any)) v = (v as any).text;
-      if (v && typeof v === 'object' && 'result' in (v as any)) v = (v as any).result;
-      const s = String(v ?? '').trim();
+      let v: unknown = cell.value;
+      if (v && typeof v === 'object' && 'text' in v) v = v.text;
+      if (v && typeof v === 'object' && 'result' in v) v = v.result;
+      if (v instanceof Date) v = v.toISOString();
+      const s =
+        v == null || typeof v === 'object'
+          ? ''
+          : String(v as string | number | boolean).trim();
       return s.length ? s : null;
     };
 
-    const rows: Array<{ rowNumber: number; name: string | null; sku: string | null; barcode: string | null }> = [];
+    const rows: Array<{
+      rowNumber: number;
+      name: string | null;
+      sku: string | null;
+      barcode: string | null;
+    }> = [];
     for (let i = 2; i <= sheet.rowCount; i++) {
       const row = sheet.getRow(i);
       const name = cellStr(row, colMap.name);
@@ -834,7 +881,10 @@ export class ProductsService {
     await this.productRepo.save(product);
   }
 
-  async listAliases(productId: string, current: JwtUser): Promise<ProductAlias[]> {
+  async listAliases(
+    productId: string,
+    current: JwtUser,
+  ): Promise<ProductAlias[]> {
     await this.findOne(productId, current);
     return this.aliasRepo.find({
       where: { productId },

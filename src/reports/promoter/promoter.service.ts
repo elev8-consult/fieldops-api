@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { AuditService } from '../../audit/audit.service';
+import { assertBrandAccess, scopedBrandFilter } from '../../common/brand-scope';
 import { JwtUser } from '../../common/interfaces/jwt-user.interface';
 import { PromoterReport } from './entities/promoter-report.entity';
 import { PromoterSaleItem } from './entities/promoter-sale-item.entity';
@@ -41,13 +42,9 @@ export class PromoterService {
     qb: SelectQueryBuilder<PromoterReport>,
     brandParam?: string,
   ) {
-    if (current.role === 'brand_manager') {
-      if (current.brandId == null) {
-        throw new ForbiddenException('Brand manager has no brand');
-      }
-      qb.andWhere('parsed.brand_id = :bid', { bid: current.brandId });
-    } else if (brandParam != null) {
-      qb.andWhere('parsed.brand_id = :bid', { bid: brandParam });
+    const bid = scopedBrandFilter(current, brandParam);
+    if (bid != null) {
+      qb.andWhere('parsed.brand_id = :bid', { bid });
     }
   }
 
@@ -70,11 +67,16 @@ export class PromoterService {
     if (q.status) {
       qb.andWhere('parsed.status = :st', { st: q.status });
     }
+    const reportDay = `COALESCE(parsed.report_date, (parsed.created_at AT TIME ZONE 'Asia/Beirut')::date)`;
     if (q.from) {
-      qb.andWhere('parsed.created_at >= :from', { from: new Date(q.from) });
+      qb.andWhere(`${reportDay} >= CAST(:from AS date)`, {
+        from: q.from.slice(0, 10),
+      });
     }
     if (q.to) {
-      qb.andWhere('parsed.created_at <= :to', { to: new Date(q.to) });
+      qb.andWhere(`${reportDay} <= CAST(:to AS date)`, {
+        to: q.to.slice(0, 10),
+      });
     }
 
     const total = await qb.clone().getCount();
@@ -102,11 +104,7 @@ export class PromoterService {
     if (!report) {
       throw new NotFoundException('Promoter report not found');
     }
-    if (current.role === 'brand_manager') {
-      if (current.brandId !== report.parsedReport.brandId) {
-        throw new ForbiddenException('Out of brand scope');
-      }
-    }
+    assertBrandAccess(current, report.parsedReport.brandId);
     return report;
   }
 
@@ -138,7 +136,9 @@ export class PromoterService {
         'update',
         'promoStandPlacement',
         old != null ? String(old) : null,
-        dto.promoStandPlacement != null ? String(dto.promoStandPlacement) : null,
+        dto.promoStandPlacement != null
+          ? String(dto.promoStandPlacement)
+          : null,
       );
     }
     if (dto.personsContacted !== undefined) {

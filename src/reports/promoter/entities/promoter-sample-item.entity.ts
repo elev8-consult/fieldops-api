@@ -17,7 +17,9 @@ export class PromoterSampleItem {
   @Column({ name: 'promoter_report_id', type: 'uuid' })
   promoterReportId: string;
 
-  @ManyToOne(() => PromoterReport, (r) => r.sampleItems, { onDelete: 'CASCADE' })
+  @ManyToOne(() => PromoterReport, (r) => r.sampleItems, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'promoter_report_id' })
   promoterReport: PromoterReport;
 
@@ -28,7 +30,12 @@ export class PromoterSampleItem {
   @JoinColumn({ name: 'product_id' })
   product: Product | null;
 
-  @Column({ name: 'product_name_raw', type: 'varchar', length: 512, nullable: true })
+  @Column({
+    name: 'product_name_raw',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   productNameRaw: string | null;
 
   @Column({ type: 'int', nullable: true })

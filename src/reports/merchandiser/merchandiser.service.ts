@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuditService } from '../../audit/audit.service';
+import { assertBrandAccess, scopedBrandFilter } from '../../common/brand-scope';
 import { JwtUser } from '../../common/interfaces/jwt-user.interface';
 import { ProductsService } from '../../products/products.service';
 import { MerchandiserReportItem } from './entities/merchandiser-report-item.entity';
@@ -41,13 +42,9 @@ export class MerchandiserService {
     qb: SelectQueryBuilder<MerchandiserReport>,
     brandParam?: string,
   ) {
-    if (current.role === 'brand_manager') {
-      if (current.brandId == null) {
-        throw new ForbiddenException('Brand manager has no brand');
-      }
-      qb.andWhere('pr.brand_id = :bid', { bid: current.brandId });
-    } else if (brandParam != null) {
-      qb.andWhere('pr.brand_id = :bid', { bid: brandParam });
+    const bid = scopedBrandFilter(current, brandParam);
+    if (bid != null) {
+      qb.andWhere('pr.brand_id = :bid', { bid });
     }
   }
 
@@ -70,11 +67,16 @@ export class MerchandiserService {
     if (q.status) {
       qb.andWhere('pr.status = :st', { st: q.status });
     }
+    const reportDay = `COALESCE(pr.report_date, (pr.created_at AT TIME ZONE 'Asia/Beirut')::date)`;
     if (q.from) {
-      qb.andWhere('pr.created_at >= :from', { from: new Date(q.from) });
+      qb.andWhere(`${reportDay} >= CAST(:from AS date)`, {
+        from: q.from.slice(0, 10),
+      });
     }
     if (q.to) {
-      qb.andWhere('pr.created_at <= :to', { to: new Date(q.to) });
+      qb.andWhere(`${reportDay} <= CAST(:to AS date)`, {
+        to: q.to.slice(0, 10),
+      });
     }
 
     const total = await qb.clone().getCount();
@@ -100,11 +102,7 @@ export class MerchandiserService {
     if (!mr) {
       throw new NotFoundException('Merchandiser report not found');
     }
-    if (current.role === 'brand_manager') {
-      if (current.brandId !== mr.parsedReport.brandId) {
-        throw new ForbiddenException('Out of brand scope');
-      }
-    }
+    assertBrandAccess(current, mr.parsedReport.brandId);
 
     const brandId = mr.parsedReport.brandId;
     const itemMetaRows = await this.dataSource.query<
@@ -131,8 +129,9 @@ export class MerchandiserService {
     if (brandId != null) {
       for (const item of mr.items) {
         const meta = itemMetaMap.get(String(item.id));
-        (item as unknown as { matchConfidence?: number | null }).matchConfidence =
-          meta?.match_confidence ?? null;
+        (
+          item as unknown as { matchConfidence?: number | null }
+        ).matchConfidence = meta?.match_confidence ?? null;
         (item as unknown as { matchType?: string | null }).matchType =
           meta?.match_type ?? null;
         const rawName = meta?.product_name_raw ?? item.productNameRaw ?? '';
@@ -143,10 +142,13 @@ export class MerchandiserService {
             String(brandId),
             rawName,
           );
-          (item as unknown as { matchSuggestions?: unknown[] }).matchSuggestions =
-            match.suggestions.slice(0, 3);
+          (
+            item as unknown as { matchSuggestions?: unknown[] }
+          ).matchSuggestions = match.suggestions.slice(0, 3);
         } else {
-          (item as unknown as { matchSuggestions?: unknown[] }).matchSuggestions = [];
+          (
+            item as unknown as { matchSuggestions?: unknown[] }
+          ).matchSuggestions = [];
         }
       }
     }

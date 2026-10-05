@@ -7,11 +7,13 @@ import { AuthModule } from './auth/auth.module';
 import { BrandsModule } from './brands/brands.module';
 import { typeOrmConfigFactory } from './config/database.config';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { HealthController } from './health.controller';
 import { MessagesModule } from './messages/messages.module';
 import { OutletsModule } from './outlets/outlets.module';
 import { ProductsModule } from './products/products.module';
 import { ReportsModule } from './reports/reports.module';
 import { ReviewModule } from './review/review.module';
+import { UnknownSendersModule } from './unknown-senders/unknown-senders.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -33,6 +35,8 @@ import { UsersModule } from './users/users.module';
     ReportsModule,
     ReviewModule,
     AnalyticsModule,
+    UnknownSendersModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

@@ -1,9 +1,16 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
 import * as bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
 import { IsNull, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Otp } from './entities/otp.entity';
@@ -39,7 +46,13 @@ export class OtpService {
     return d;
   }
 
+  private get isProduction(): boolean {
+    return this.config.get<string>('NODE_ENV') === 'production';
+  }
+
+  /** Disabled in production; use a permanent login code for test accounts there. */
   private get devCode(): string | null {
+    if (this.isProduction) return null;
     const c = this.config.get<string>('DEV_OTP_CODE');
     return c && c.trim() ? c.trim() : null;
   }
@@ -62,17 +75,26 @@ export class OtpService {
     return Number.isFinite(n) && n > 0 ? n : 5;
   }
 
+  /** Only field roles sign in by phone; staff use email + password on the web. */
+  private static readonly PHONE_LOGIN_ROLES = ['merchandiser', 'promoter'];
+
   private async findActiveUser(phone: string): Promise<User | null> {
     return this.userRepo
       .createQueryBuilder('u')
       .addSelect('u.loginCodeHash')
       .where('u.whatsapp_phone = :phone', { phone })
       .andWhere('u.is_active = true')
+      .andWhere('u.role IN (:...roles)', {
+        roles: OtpService.PHONE_LOGIN_ROLES,
+      })
       .getOne();
   }
 
   private static readonly MAX_CODE_FAILURES = 10;
   private static readonly LOCK_MINUTES = 15;
+  private static readonly MAX_OTP_ATTEMPTS = 6;
+  private static readonly MAX_OTP_REQUESTS = 5;
+  private static readonly OTP_REQUEST_WINDOW_MINUTES = 15;
 
   /** Check a user's permanent login code, locking after repeated failures. */
   private async verifyLoginCode(user: User, code: string): Promise<void> {
@@ -91,14 +113,17 @@ export class OtpService {
       }
       return;
     }
-    const failures = user.failedLoginCount + 1;
-    const lock = failures >= OtpService.MAX_CODE_FAILURES;
-    await this.userRepo.update(user.id, {
-      failedLoginCount: lock ? 0 : failures,
-      lockedUntil: lock
-        ? new Date(Date.now() + OtpService.LOCK_MINUTES * 60_000)
-        : user.lockedUntil,
-    });
+    // Single statement so parallel guesses cannot skip the lock.
+    await this.userRepo.query(
+      `UPDATE users
+       SET failed_login_count = CASE WHEN failed_login_count + 1 >= $2 THEN 0
+                                     ELSE failed_login_count + 1 END,
+           locked_until = CASE WHEN failed_login_count + 1 >= $2
+                               THEN now() + make_interval(mins => $3)
+                               ELSE locked_until END
+       WHERE id = $1`,
+      [user.id, OtpService.MAX_CODE_FAILURES, OtpService.LOCK_MINUTES],
+    );
     throw new UnauthorizedException('Invalid or expired code');
   }
 
@@ -121,16 +146,22 @@ export class OtpService {
   }
 
   private generateCode(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return String(randomInt(100000, 1000000));
   }
 
   // ── Delivery channels (best-effort; never throw to the caller) ──────────
   private async sendCode(phone: string, code: string): Promise<string> {
     if (await this.trySendWhatsApp(phone, code)) return 'whatsapp';
     if (await this.trySendSms(phone, code)) return 'sms';
-    this.logger.warn(
-      `No OTP channel configured — code for ${phone} is ${code} (dev only)`,
-    );
+    if (this.isProduction) {
+      this.logger.error(
+        `No OTP channel configured; code for ${phone} was not delivered`,
+      );
+    } else {
+      this.logger.warn(
+        `No OTP channel configured — code for ${phone} is ${code} (dev only)`,
+      );
+    }
     return 'dev';
   }
 
@@ -227,8 +258,27 @@ export class OtpService {
       return { channel: 'static' };
     }
 
+    const recent: Array<{ n: number }> = await this.otpRepo.query(
+      `SELECT COUNT(*)::int AS n FROM auth_otp
+       WHERE phone = $1 AND created_at > now() - make_interval(mins => $2)`,
+      [phone, OtpService.OTP_REQUEST_WINDOW_MINUTES],
+    );
+    if ((recent[0]?.n ?? 0) >= OtpService.MAX_OTP_REQUESTS) {
+      throw new HttpException(
+        'Too many codes requested. Try again in 15 minutes.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const code = this.generateCode();
     const codeHash = await bcrypt.hash(code, 10);
+
+    // Only the newest code is valid, so requesting again cannot reset attempts.
+    await this.otpRepo.update(
+      { phone, consumedAt: IsNull() },
+      { consumedAt: new Date() },
+    );
+
     const channel = await this.sendCode(phone, code);
 
     await this.otpRepo.save(
@@ -263,11 +313,19 @@ export class OtpService {
       });
       if (!row) throw new UnauthorizedException('Invalid or expired code');
 
-      row.attempts += 1;
-      await this.otpRepo.save(row);
+      // TypeORM returns [rows, rowCount] for UPDATE ... RETURNING on Postgres.
+      const [bumped] = await this.otpRepo.query<
+        [{ attempts: number }[], number]
+      >(
+        `UPDATE auth_otp SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts`,
+        [row.id],
+      );
+      const attempts = bumped[0]?.attempts ?? row.attempts + 1;
 
-      if (row.attempts > 6) {
-        throw new UnauthorizedException('Too many attempts. Request a new code.');
+      if (attempts > OtpService.MAX_OTP_ATTEMPTS) {
+        throw new UnauthorizedException(
+          'Too many attempts. Request a new code.',
+        );
       }
       if (row.expiresAt.getTime() < Date.now()) {
         throw new UnauthorizedException('That code has expired.');
@@ -275,8 +333,13 @@ export class OtpService {
       const match = await bcrypt.compare(code, row.codeHash);
       if (!match) throw new UnauthorizedException('Invalid or expired code');
 
-      row.consumedAt = new Date();
-      await this.otpRepo.save(row);
+      const consumed = await this.otpRepo.update(
+        { id: row.id, consumedAt: IsNull() },
+        { consumedAt: new Date() },
+      );
+      if (!consumed.affected) {
+        throw new UnauthorizedException('Invalid or expired code');
+      }
     }
 
     if (!user) throw new UnauthorizedException('Invalid or expired code');

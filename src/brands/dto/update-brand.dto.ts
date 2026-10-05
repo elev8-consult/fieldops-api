@@ -1,4 +1,10 @@
-import { IsBoolean, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Matches,
+  MinLength,
+} from 'class-validator';
 
 export class UpdateBrandDto {
   @IsOptional()

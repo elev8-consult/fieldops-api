@@ -3,18 +3,29 @@ import { IsDateString, IsOptional, IsUUID } from 'class-validator';
 
 export class MerchandiserDashboardQueryDto {
   @IsOptional()
-  @Transform(({ value, obj }) => value ?? obj.brandId)
-  @Transform(({ value }) => (value == null || value === '' ? undefined : String(value)))
+  @Transform(
+    ({ value, obj }: { value: unknown; obj: Record<string, unknown> }) =>
+      value ?? obj.brandId,
+  )
+  @Transform(({ value }) =>
+    value == null || value === '' ? undefined : String(value),
+  )
   @IsUUID()
   brand_id?: string;
 
   @IsOptional()
-  @Transform(({ value, obj }) => value ?? obj.dateFrom)
+  @Transform(
+    ({ value, obj }: { value: unknown; obj: Record<string, unknown> }) =>
+      value ?? obj.dateFrom,
+  )
   @IsDateString()
   date_from?: string;
 
   @IsOptional()
-  @Transform(({ value, obj }) => value ?? obj.dateTo)
+  @Transform(
+    ({ value, obj }: { value: unknown; obj: Record<string, unknown> }) =>
+      value ?? obj.dateTo,
+  )
   @IsDateString()
   date_to?: string;
 

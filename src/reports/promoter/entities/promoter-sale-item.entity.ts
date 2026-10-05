@@ -28,7 +28,12 @@ export class PromoterSaleItem {
   @JoinColumn({ name: 'product_id' })
   product: Product | null;
 
-  @Column({ name: 'product_name_raw', type: 'varchar', length: 512, nullable: true })
+  @Column({
+    name: 'product_name_raw',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   productNameRaw: string | null;
 
   @Column({ type: 'int', nullable: true })

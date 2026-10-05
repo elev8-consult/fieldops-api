@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
 import { UsersModule } from '../users/users.module';
@@ -15,6 +16,7 @@ import { OtpService } from './otp.service';
   imports: [
     UsersModule,
     TypeOrmModule.forFeature([Otp, User]),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 30 }]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

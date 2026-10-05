@@ -2,12 +2,29 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { ParsedReport } from './entities/parsed-report.entity';
-import { ReportFlag }   from './entities/report-flag.entity';
+import { ReportFlag } from './entities/report-flag.entity';
 import { ProductsService } from '../products/products.service';
+import { assertBrandAccess, scopedBrandFilter } from '../common/brand-scope';
+import type { JwtUser } from '../common/interfaces/jwt-user.interface';
+import type { AcceptMatchDto } from './dto/accept-match.dto';
+import type { UpdateParsedReportDto } from './dto/update-parsed-report.dto';
+
+type Row = Record<string, unknown>;
+
+type ReviewItem = {
+  productNameRaw?: unknown;
+  isProductMatched?: unknown;
+  matchSuggestions?: unknown[];
+};
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
 
 @Injectable()
 export class ReviewService {
@@ -22,20 +39,18 @@ export class ReviewService {
   ) {}
 
   // ── Review Queue ──────────────────────────────────────────────────
-  async getQueue(filters: {
-    brandId?:    string;
-    reportType?: string;
-    status?:     string;
-    page?:       number;
-    limit?:      number;
-  }) {
-    const {
-      brandId,
-      reportType,
-      status = 'flagged',
-      page   = 1,
-      limit  = 20,
-    } = filters;
+  async getQueue(
+    current: JwtUser,
+    filters: {
+      brandId?: string;
+      reportType?: string;
+      status?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
+    const { reportType, status = 'flagged', page = 1, limit = 20 } = filters;
+    const brandId = scopedBrandFilter(current, filters.brandId);
 
     const query = this.reportsRepo
       .createQueryBuilder('r')
@@ -44,72 +59,85 @@ export class ReviewService {
       .take(limit)
       .skip((page - 1) * limit);
 
-    if (brandId)    query.andWhere('r.brand_id = :brandId',       { brandId });
-    if (reportType) query.andWhere('r.report_type = :reportType', { reportType });
+    if (brandId) query.andWhere('r.brand_id = :brandId', { brandId });
+    if (reportType)
+      query.andWhere('r.report_type = :reportType', { reportType });
 
     const [reports, total] = await query.getManyAndCount();
 
-    const reportsWithFlags = await Promise.all(
-      reports.map(async (report) => {
-        const flags = await this.flagsRepo.find({
-          where: {
-            reportId: report.id,
-            status: 'open',
-          },
-          order: {
-            createdAt: 'DESC',
-          },
-        });
-        return { ...report, flags };
-      }),
-    );
+    const flags = reports.length
+      ? await this.flagsRepo.find({
+          where: { reportId: In(reports.map((r) => r.id)), status: 'open' },
+          order: { createdAt: 'DESC' },
+        })
+      : [];
+    const flagsByReport = new Map<string, ReportFlag[]>();
+    for (const flag of flags) {
+      const list = flagsByReport.get(flag.reportId) ?? [];
+      list.push(flag);
+      flagsByReport.set(flag.reportId, list);
+    }
+
+    const reportsWithFlags = reports.map((report) => ({
+      ...report,
+      flags: flagsByReport.get(report.id) ?? [],
+    }));
 
     return { data: reportsWithFlags, total, page, limit };
   }
 
+  private async findReportInScope(
+    id: string,
+    current: JwtUser,
+  ): Promise<ParsedReport> {
+    const report = await this.reportsRepo.findOne({
+      where: { id: id as unknown as ParsedReport['id'] },
+    });
+    if (!report) throw new NotFoundException(`Report ${id} not found`);
+    assertBrandAccess(current, report.brandId);
+    return report;
+  }
+
   // ── Single Report with all details ───────────────────────────────
-  async getReport(id: string) {
+  async getReport(id: string, current: JwtUser) {
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
       throw new BadRequestException(`Invalid report ID format: "${id}"`);
     }
 
-  const report = await this.reportsRepo.findOne({
-    where: { id: id as unknown as ParsedReport['id'] },
-  });
-    if (!report) throw new NotFoundException(`Report ${id} not found`);
+    const report = await this.findReportInScope(id, current);
 
-  const flags = await this.flagsRepo.find({
-    where: { reportId: id as unknown as ReportFlag['reportId'] },
-    order: { createdAt: 'DESC' },
-  });
+    const flags = await this.flagsRepo.find({
+      where: { reportId: id as unknown as ReportFlag['reportId'] },
+      order: { createdAt: 'DESC' },
+    });
 
-    const messageRows = await this.dataSource.query(
+    const messageRows: Row[] = await this.dataSource.query(
       `SELECT id, body_raw, body_normalized, ai_extraction, ai_classification,
               ai_confidence, message_type, sender_phone, sender_name, received_at
        FROM whatsapp_messages WHERE id = $1`,
       [report.messageId],
     );
 
-    const brandRows = report.brandId
+    const brandRows: Row[] = report.brandId
       ? await this.dataSource.query(
           `SELECT id, name, slug FROM brands WHERE id = $1`,
           [report.brandId],
         )
       : [];
 
-    const outletRows = report.outletId
+    const outletRows: Row[] = report.outletId
       ? await this.dataSource.query(
           `SELECT id, name, type, is_depot FROM outlets WHERE id = $1`,
           [report.outletId],
         )
       : [];
 
-    let reportData = null;
+    let reportData: Row | null = null;
 
     if (report.reportType === 'merchandiser') {
-      const rows = await this.dataSource.query(
+      const rows: Row[] = await this.dataSource.query(
         `SELECT
            mr.id,
            mr.promo_type AS "promoType",
@@ -138,27 +166,13 @@ export class ReviewService {
       );
       reportData = rows[0] ?? null;
 
-      const merchData = reportData as { items?: any[] } | null;
-      if (merchData && Array.isArray(merchData.items) && report.brandId != null) {
-        for (const item of merchData.items) {
-          const isMatched = Boolean(item?.isProductMatched);
-          const rawName =
-            typeof item?.productNameRaw === 'string' ? item.productNameRaw : '';
-          if (!isMatched && rawName.trim().length > 0) {
-            const match = await this.productsService.fuzzyMatchProduct(
-              String(report.brandId),
-              rawName,
-            );
-            item.matchSuggestions = match.suggestions.slice(0, 3);
-          } else {
-            item.matchSuggestions = [];
-          }
-        }
+      if (reportData && report.brandId != null) {
+        await this.addMatchSuggestions(reportData.items, report.brandId);
       }
     }
 
     if (report.reportType === 'promoter') {
-      const rows = await this.dataSource.query(
+      const rows: Row[] = await this.dataSource.query(
         `SELECT
            pr.id,
            pr.promo_stand_placement AS "promoStandPlacement",
@@ -203,98 +217,96 @@ export class ReviewService {
       reportData = rows[0] ?? null;
 
       if (reportData && report.brandId != null) {
-        const enrichList = async (list: any[]) => {
-          if (!Array.isArray(list)) return;
-          for (const item of list) {
-            const isMatched = Boolean(item?.isProductMatched);
-            const rawName =
-              typeof item?.productNameRaw === 'string' ? item.productNameRaw : '';
-            if (!isMatched && rawName.trim().length > 0) {
-              const match = await this.productsService.fuzzyMatchProduct(
-                String(report.brandId),
-                rawName,
-              );
-              item.matchSuggestions = match.suggestions.slice(0, 3);
-            } else {
-              item.matchSuggestions = [];
-            }
-          }
-        };
-
-        const promoterData = reportData as { sales?: any[]; samples?: any[] };
-        await enrichList(promoterData.sales ?? []);
-        await enrichList(promoterData.samples ?? []);
+        await this.addMatchSuggestions(reportData.sales, report.brandId);
+        await this.addMatchSuggestions(reportData.samples, report.brandId);
       }
     }
 
     return {
       ...report,
       flags,
-      message:    messageRows[0]  ?? null,
-      brand:      brandRows[0]    ?? null,
-      outlet:     outletRows[0]   ?? null,
+      message: messageRows[0] ?? null,
+      brand: brandRows[0] ?? null,
+      outlet: outletRows[0] ?? null,
       reportData,
     };
   }
 
+  private async addMatchSuggestions(list: unknown, brandId: string | number) {
+    if (!Array.isArray(list)) return;
+    for (const item of list as ReviewItem[]) {
+      const rawName =
+        typeof item.productNameRaw === 'string' ? item.productNameRaw : '';
+      if (!item.isProductMatched && rawName.trim().length > 0) {
+        const match = await this.productsService.fuzzyMatchProduct(
+          String(brandId),
+          rawName,
+        );
+        item.matchSuggestions = match.suggestions.slice(0, 3);
+      } else {
+        item.matchSuggestions = [];
+      }
+    }
+  }
+
   // ── Approve Report ────────────────────────────────────────────────
-  async approve(id: string, userId: string) {
-    const report = await this.reportsRepo.findOne({
-      where: { id: id as unknown as ParsedReport['id'] },
-    });
-    if (!report) throw new NotFoundException(`Report ${id} not found`);
+  async approve(id: string, current: JwtUser) {
+    await this.findReportInScope(id, current);
 
-    await this.reportsRepo.update(
-      { id: id as unknown as ParsedReport['id'] },
-      { status: 'approved' },
-    );
-
-    const openFlags = await this.flagsRepo.find({
-      where: {
-        reportId: id as unknown as ReportFlag['reportId'],
-        status: 'open',
-      },
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(ParsedReport, { id }, { status: 'approved' });
+      await manager.update(
+        ReportFlag,
+        { reportId: id, status: 'open' },
+        {
+          status: 'resolved',
+          resolvedById: current.id,
+          resolvedAt: new Date(),
+        },
+      );
     });
 
-    await Promise.all(
-      openFlags.map((flag) =>
-        this.flagsRepo.update(flag.id, {
-          status:       'resolved',
-          resolvedById: userId,
-          resolvedAt:   new Date(),
-        }),
-      ),
-    );
-
-    return this.getReport(id);
+    return this.getReport(id, current);
   }
 
   // ── Reject Report ─────────────────────────────────────────────────
-  async reject(id: string) {
-    const report = await this.reportsRepo.findOne({
-      where: { id: id as unknown as ParsedReport['id'] },
-    });
-    if (!report) throw new NotFoundException(`Report ${id} not found`);
+  async reject(id: string, current: JwtUser) {
+    await this.findReportInScope(id, current);
 
-    await this.reportsRepo.update(
-      { id: id as unknown as ParsedReport['id'] },
-      { status: 'rejected' },
-    );
+    await this.reportsRepo.update({ id }, { status: 'rejected' });
 
-    return this.getReport(id);
+    return this.getReport(id, current);
   }
 
   // ── Update Report Fields ──────────────────────────────────────────
-  async update(id: string, data: Partial<ParsedReport>) {
-    const report = await this.reportsRepo.findOne({
-      where: { id: id as unknown as ParsedReport['id'] },
-    });
-    if (!report) throw new NotFoundException(`Report ${id} not found`);
+  async update(id: string, dto: UpdateParsedReportDto, current: JwtUser) {
+    await this.findReportInScope(id, current);
 
-    const { id: _id, createdAt: _c, ...updateData } = data as any;
+    if (dto.brandId !== undefined && current.role !== 'super_admin') {
+      throw new ForbiddenException('Only super admins can change the brand');
+    }
+
+    const updateData: Partial<
+      Pick<
+        ParsedReport,
+        | 'brandId'
+        | 'isDepotReport'
+        | 'outletId'
+        | 'reportDate'
+        | 'locationRaw'
+        | 'nameRaw'
+      >
+    > = {};
+    if (dto.brandId !== undefined) updateData.brandId = dto.brandId;
+    if (dto.isDepotReport !== undefined)
+      updateData.isDepotReport = dto.isDepotReport;
+    if (dto.outletId !== undefined) updateData.outletId = dto.outletId;
+    if (dto.reportDate !== undefined) updateData.reportDate = dto.reportDate;
+    if (dto.locationRaw !== undefined) updateData.locationRaw = dto.locationRaw;
+    if (dto.nameRaw !== undefined) updateData.nameRaw = dto.nameRaw;
 
     await this.reportsRepo.update(
-      { id: id as unknown as ParsedReport['id'] },
+      { id },
       {
         ...updateData,
         status: 'pending_review',
@@ -312,87 +324,52 @@ export class ReviewService {
   }
 
   // ── Resolve Flag ──────────────────────────────────────────────────
-  async resolveFlag(flagId: string, userId: string) {
-    const flag = await this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
-    });
-    if (!flag) throw new NotFoundException(`Flag ${flagId} not found`);
-
-    await this.flagsRepo.update(
-      { id: flagId as unknown as ReportFlag['id'] },
-      {
-        status:       'resolved',
-        resolvedById: userId,
-        resolvedAt:   new Date(),
-      },
-    );
-
-    return this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
-    });
+  async resolveFlag(flagId: string, current: JwtUser) {
+    return this.closeFlag(flagId, 'resolved', current);
   }
 
   // ── Dismiss Flag ──────────────────────────────────────────────────
-  async dismissFlag(flagId: string, userId: string) {
+  async dismissFlag(flagId: string, current: JwtUser) {
+    return this.closeFlag(flagId, 'dismissed', current);
+  }
+
+  private async closeFlag(
+    flagId: string,
+    status: 'resolved' | 'dismissed',
+    current: JwtUser,
+  ) {
     const flag = await this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
+      where: { id: flagId },
+      relations: ['report'],
     });
     if (!flag) throw new NotFoundException(`Flag ${flagId} not found`);
+    assertBrandAccess(current, flag.report?.brandId);
 
     await this.flagsRepo.update(
-      { id: flagId as unknown as ReportFlag['id'] },
+      { id: flagId },
       {
-        status:       'dismissed',
-        resolvedById: userId,
-        resolvedAt:   new Date(),
+        status,
+        resolvedById: current.id,
+        resolvedAt: new Date(),
       },
     );
 
-    return this.flagsRepo.findOne({
-      where: { id: flagId as unknown as ReportFlag['id'] },
-    });
+    return this.flagsRepo.findOne({ where: { id: flagId } });
   }
 
   async acceptProductMatch(
     itemId: string,
-    productId: string,
-    rawName: string,
-    userId: string,
-    reportType: 'merchandiser' | 'promoter_sale' | 'promoter_sample',
+    dto: AcceptMatchDto,
+    current: JwtUser,
   ): Promise<{ success: boolean; aliasCreated: boolean }> {
+    const { productId, rawName, reportType } = dto;
+
     const tableName =
       reportType === 'merchandiser'
         ? 'merchandiser_report_items'
         : reportType === 'promoter_sale'
           ? 'promoter_sale_items'
           : 'promoter_sample_items';
-
-    await this.dataSource.query(
-      `UPDATE ${tableName}
-       SET product_id = $1,
-           is_product_matched = true,
-           match_type = 'fuzzy_confirmed',
-           match_confidence = 1.0
-       WHERE id::text = $2`,
-      [productId, itemId],
-    );
-
-    let aliasCreated = false;
-    const normalizedRaw = rawName.trim().toLowerCase();
-
-    const existing = await this.dataSource.query(
-      `SELECT id FROM product_aliases WHERE lower(alias) = lower($1) LIMIT 1`,
-      [normalizedRaw],
-    );
-
-    if (existing.length === 0) {
-      await this.dataSource.query(
-        `INSERT INTO product_aliases (product_id, alias, created_by, created_at)
-         VALUES ($1, $2, $3, now())`,
-        [productId, normalizedRaw, userId],
-      );
-      aliasCreated = true;
-    }
 
     const parentJoin =
       reportType === 'merchandiser'
@@ -404,27 +381,90 @@ export class ReviewService {
         ? 'merchandiser_reports mr JOIN parsed_reports pr ON pr.id = mr.report_id'
         : 'promoter_reports pr_r JOIN parsed_reports pr ON pr.id = pr_r.report_id';
 
-    await this.dataSource.query(
-      `UPDATE report_flags rf
-       SET status = 'resolved',
-           resolved_by = $1,
-           resolved_at = now()
-       FROM ${tableName} ri
-       JOIN ${parentTables}
-         ON ${parentJoin}
-       WHERE ri.id::text = $2
-         AND rf.report_id = pr.id
-         AND rf.flag_code = 'UNRECOGNIZED_PRODUCT'
-         AND rf.status = 'open'
-         AND rf.message ILIKE $3`,
-      [userId, itemId, `%${rawName}%`],
-    );
+    const itemRows: Array<{ brand_id: string | null }> =
+      await this.dataSource.query(
+        `SELECT pr.brand_id
+         FROM ${tableName} ri
+         JOIN ${parentTables} ON ${parentJoin}
+         WHERE ri.id::text = $1`,
+        [itemId],
+      );
+    if (!itemRows.length) {
+      throw new NotFoundException(`Item ${itemId} not found`);
+    }
+    const reportBrandId = itemRows[0].brand_id;
+    assertBrandAccess(current, reportBrandId);
+
+    const productRows: Array<{ brand_id: string }> =
+      await this.dataSource.query(
+        `SELECT brand_id FROM products WHERE id = $1`,
+        [productId],
+      );
+    if (!productRows.length) {
+      throw new NotFoundException(`Product ${productId} not found`);
+    }
+    if (reportBrandId != null && productRows[0].brand_id !== reportBrandId) {
+      throw new BadRequestException(
+        'Product belongs to a different brand than the report',
+      );
+    }
+
+    const userId = String(current.id);
+    const normalizedRaw = rawName.trim().toLowerCase();
+
+    const aliasCreated = await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `UPDATE ${tableName}
+         SET product_id = $1,
+             is_product_matched = true,
+             match_type = 'fuzzy_confirmed',
+             match_confidence = 1.0
+         WHERE id::text = $2`,
+        [productId, itemId],
+      );
+
+      let created = false;
+      const existing: Row[] = await manager.query(
+        `SELECT id FROM product_aliases WHERE lower(alias) = lower($1) LIMIT 1`,
+        [normalizedRaw],
+      );
+      if (existing.length === 0) {
+        await manager.query(
+          `INSERT INTO product_aliases (product_id, alias, created_by, created_at)
+           VALUES ($1, $2, $3, now())`,
+          [productId, normalizedRaw, userId],
+        );
+        created = true;
+      }
+
+      await manager.query(
+        `UPDATE report_flags rf
+         SET status = 'resolved',
+             resolved_by = $1,
+             resolved_at = now()
+         FROM ${tableName} ri
+         JOIN ${parentTables}
+           ON ${parentJoin}
+         WHERE ri.id::text = $2
+           AND rf.report_id = pr.id
+           AND rf.flag_code = 'UNRECOGNIZED_PRODUCT'
+           AND rf.status = 'open'
+           AND rf.message ILIKE $3`,
+        [userId, itemId, `%${escapeLike(rawName)}%`],
+      );
+
+      return created;
+    });
 
     return { success: true, aliasCreated };
   }
 
   // ── Get Queue Count (for sidebar badge) ──────────────────────────
-  async getQueueCount(brandId?: string): Promise<number> {
+  async getQueueCount(
+    current: JwtUser,
+    requestedBrandId?: string,
+  ): Promise<number> {
+    const brandId = scopedBrandFilter(current, requestedBrandId);
     const query = this.reportsRepo
       .createQueryBuilder('r')
       .where('r.status = :status', { status: 'flagged' });

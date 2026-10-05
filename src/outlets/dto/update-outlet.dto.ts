@@ -1,4 +1,10 @@
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { OutletType } from './create-outlet.dto';
 
 export class UpdateOutletDto {

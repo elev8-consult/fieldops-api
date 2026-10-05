@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateUserDto } from './dto/create-user.dto';
+import { SetLoginCodeDto } from './dto/set-login-code.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
@@ -48,8 +49,9 @@ export class UsersController {
   @Roles('super_admin', 'brand_manager')
   getOutlets(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() current: JwtUser,
   ) {
-    return this.usersService.getAssignedOutletIds(id);
+    return this.usersService.getAssignedOutletIdsInScope(id, current);
   }
 
   @Post()
@@ -68,14 +70,15 @@ export class UsersController {
     return this.usersService.update(id, dto, current);
   }
 
-  /** Issue a new permanent mobile login code; the plain code is shown once. */
+  /** Set a permanent mobile login code (typed PIN or random); the plain code is shown once. */
   @Post(':id/login-code')
   @Roles('super_admin', 'brand_manager')
   generateLoginCode(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: SetLoginCodeDto,
     @CurrentUser() current: JwtUser,
   ) {
-    return this.usersService.generateLoginCode(id, current);
+    return this.usersService.generateLoginCode(id, current, dto.code);
   }
 
   @Delete(':id/login-code')

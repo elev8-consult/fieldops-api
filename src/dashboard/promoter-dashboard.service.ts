@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { DataSource } from 'typeorm';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
@@ -13,10 +18,20 @@ interface PromoterProductMeta {
   is_gift: boolean;
 }
 
+type PromoterItemType = 'promoter_sale' | 'promoter_sample';
+
 interface PromoterCell {
   quantity: number;
   status: string;
+  /** First report in the cell; kept for older web clients. */
   parsed_report_id: string;
+  parsed_report_ids: string[];
+  /** Unmatched lines in this cell, so the web can match them directly. */
+  unmatched_items: Array<{
+    id: string;
+    type: PromoterItemType;
+    raw_name: string;
+  }>;
 }
 
 interface PromoterRow {
@@ -42,6 +57,7 @@ interface PromoterDashboardResponse {
 }
 
 type SalesRawRow = {
+  item_id: string;
   parsed_report_id: string;
   report_date: string;
   status: string;
@@ -60,6 +76,7 @@ type SalesRawRow = {
 };
 
 type SampleRawRow = {
+  item_id: string;
   parsed_report_id: string;
   report_date: string;
   status: string;
@@ -118,7 +135,9 @@ export class PromoterDashboardService {
     const dateFrom = query.date_from ?? null;
     const dateTo = query.date_to ?? null;
 
-    const brands = await this.dataSource.query<Array<{ id: string; name: string }>>(
+    const brands = await this.dataSource.query<
+      Array<{ id: string; name: string }>
+    >(
       `SELECT id::text AS id, name
        FROM brands
        WHERE id = $1
@@ -129,6 +148,7 @@ export class PromoterDashboardService {
 
     const salesRows = await this.dataSource.query<SalesRawRow[]>(
       `SELECT
+         psi.id::text              AS item_id,
          pr.id::text               AS parsed_report_id,
          pr.report_date::text      AS report_date,
          pr.status                 AS status,
@@ -157,6 +177,7 @@ export class PromoterDashboardService {
 
     const sampleRows = await this.dataSource.query<SampleRawRow[]>(
       `SELECT
+         psam.id::text             AS item_id,
          pr.id::text               AS parsed_report_id,
          pr.report_date::text      AS report_date,
          pr.status                 AS status,
@@ -220,13 +241,18 @@ export class PromoterDashboardService {
       if (rowsMap.has(outletId)) return rowsMap.get(outletId)!;
       const days: Record<string, Record<string, PromoterCell | number>> = {};
       for (const d of dates) days[d] = { total: 0 };
-      const row: PromoterRow = { outlet_id: outletId, outlet_name: outletName, days };
+      const row: PromoterRow = {
+        outlet_id: outletId,
+        outlet_name: outletName,
+        days,
+      };
       rowsMap.set(outletId, row);
       return row;
     };
 
     const ensureProduct = (
       key: string,
+      label: string,
       productId: string | null,
       unmatched: boolean,
       isOffer: boolean,
@@ -236,7 +262,7 @@ export class PromoterDashboardService {
       if (!existing) {
         productsMap.set(key, {
           key,
-          label: key,
+          label,
           product_id: productId ?? null,
           unmatched,
           is_offer: isOffer,
@@ -248,6 +274,45 @@ export class PromoterDashboardService {
       existing.unmatched = existing.unmatched || unmatched;
     };
 
+    const addToCell = (
+      r: {
+        item_id: string;
+        parsed_report_id: string;
+        report_date: string;
+        status: string;
+        outlet_id: string;
+        outlet_name: string;
+      },
+      key: string,
+      qty: number,
+      unmatched: boolean,
+      type: PromoterItemType,
+      rawName: string,
+    ) => {
+      const row = ensureRow(r.outlet_id, r.outlet_name);
+      if (!row.days[r.report_date]) row.days[r.report_date] = { total: 0 };
+      let cell = row.days[r.report_date][key] as PromoterCell | undefined;
+      if (!cell) {
+        cell = {
+          quantity: 0,
+          status: r.status,
+          parsed_report_id: r.parsed_report_id,
+          parsed_report_ids: [],
+          unmatched_items: [],
+        };
+        row.days[r.report_date][key] = cell;
+      }
+      cell.quantity += qty;
+      if (!cell.parsed_report_ids.includes(r.parsed_report_id)) {
+        cell.parsed_report_ids.push(r.parsed_report_id);
+      }
+      if (unmatched && rawName) {
+        cell.unmatched_items.push({ id: r.item_id, type, raw_name: rawName });
+      }
+      row.days[r.report_date].total =
+        Number(row.days[r.report_date].total ?? 0) + qty;
+    };
+
     for (const r of salesRows) {
       const raw = (r.product_name_raw ?? '').trim();
       if (!raw) continue;
@@ -257,43 +322,26 @@ export class PromoterDashboardService {
           : raw;
       const qty = Number(r.quantity ?? 0);
       const unmatched = !r.is_product_matched || r.product_id == null;
-      ensureProduct(key, r.product_id ?? null, unmatched, Boolean(r.is_offer), false);
-
-      const row = ensureRow(r.outlet_id, r.outlet_name);
-      if (!row.days[r.report_date]) row.days[r.report_date] = { total: 0 };
-      const existing = row.days[r.report_date][key] as PromoterCell | undefined;
-      if (!existing) {
-        row.days[r.report_date][key] = {
-          quantity: qty,
-          status: r.status,
-          parsed_report_id: r.parsed_report_id,
-        };
-      } else {
-        existing.quantity += qty;
-      }
-      row.days[r.report_date].total = Number(row.days[r.report_date].total ?? 0) + qty;
+      ensureProduct(
+        key,
+        key,
+        r.product_id ?? null,
+        unmatched,
+        Boolean(r.is_offer),
+        false,
+      );
+      addToCell(r, key, qty, unmatched, 'promoter_sale', raw);
     }
 
     for (const r of sampleRows) {
       const raw = (r.product_name_raw ?? '').trim();
-      const key = raw || 'Gift';
+      const label = raw || 'Gift';
+      // Separate key space so a gift never merges with a sale of the same name.
+      const key = `gift:${label}`;
       const qty = Number(r.quantity ?? 0);
       const unmatched = !r.is_product_matched || r.product_id == null;
-      ensureProduct(key, r.product_id ?? null, unmatched, false, true);
-
-      const row = ensureRow(r.outlet_id, r.outlet_name);
-      if (!row.days[r.report_date]) row.days[r.report_date] = { total: 0 };
-      const existing = row.days[r.report_date][key] as PromoterCell | undefined;
-      if (!existing) {
-        row.days[r.report_date][key] = {
-          quantity: qty,
-          status: r.status,
-          parsed_report_id: r.parsed_report_id,
-        };
-      } else {
-        existing.quantity += qty;
-      }
-      row.days[r.report_date].total = Number(row.days[r.report_date].total ?? 0) + qty;
+      ensureProduct(key, label, r.product_id ?? null, unmatched, false, true);
+      addToCell(r, key, qty, unmatched, 'promoter_sample', raw);
     }
 
     const products = Array.from(productsMap.values()).sort((a, b) => {
@@ -367,7 +415,7 @@ export class PromoterDashboardService {
 
     sheet.getCell(3, 1).value = 'Items';
     let col = 3;
-    for (const _d of data.dates) {
+    for (let d = 0; d < data.dates.length; d++) {
       for (const p of data.products) {
         sheet.getCell(3, col).value = p.label;
         col++;
@@ -379,7 +427,8 @@ export class PromoterDashboardService {
 
     const feedbackByOutlet = new Map<string, string[]>();
     for (const f of data.feedback) {
-      if (!feedbackByOutlet.has(f.outlet_id)) feedbackByOutlet.set(f.outlet_id, []);
+      if (!feedbackByOutlet.has(f.outlet_id))
+        feedbackByOutlet.set(f.outlet_id, []);
       feedbackByOutlet
         .get(f.outlet_id)!
         .push(`${f.date} | ${f.reporter_name ?? ''}: ${f.text}`);
@@ -436,7 +485,10 @@ export class PromoterDashboardService {
     for (const r of [2, 3]) {
       for (let i = 1; i <= lastCol; i++) {
         sheet.getCell(r, i).fill = headerFill;
-        sheet.getCell(r, i).alignment = { horizontal: 'center', vertical: 'middle' };
+        sheet.getCell(r, i).alignment = {
+          horizontal: 'center',
+          vertical: 'middle',
+        };
       }
     }
 
@@ -471,11 +523,13 @@ export class PromoterDashboardService {
     for (let i = 3; i < feedbackCol; i++) sheet.getColumn(i).width = 12;
     sheet.getColumn(feedbackCol).width = 70;
     for (let r = 4; r <= totalRow; r++) {
-      sheet.getCell(r, feedbackCol).alignment = { wrapText: true, vertical: 'top' };
+      sheet.getCell(r, feedbackCol).alignment = {
+        wrapText: true,
+        vertical: 'top',
+      };
     }
 
     const output = await workbook.xlsx.writeBuffer();
     return Buffer.isBuffer(output) ? output : Buffer.from(output);
   }
 }
-

@@ -13,10 +13,7 @@ export class AnalyticsService {
   ) {}
 
   /** null = all brands (super_admin only, when brand_id query omitted) */
-  private resolveBrandId(
-    current: JwtUser,
-    brandId?: string,
-  ): string | null {
+  private resolveBrandId(current: JwtUser, brandId?: string): string | null {
     if (current.role === 'brand_manager') {
       if (current.brandId == null) {
         throw new ForbiddenException('Brand manager has no brand');
@@ -124,11 +121,7 @@ export class AnalyticsService {
     }));
   }
 
-  async topFlaggedProducts(
-    current: JwtUser,
-    brandId?: string,
-    limit = 10,
-  ) {
+  async topFlaggedProducts(current: JwtUser, brandId?: string, limit = 10) {
     const bid = this.resolveBrandId(current, brandId);
     const lim = Math.min(100, Math.max(1, limit));
 
@@ -160,11 +153,7 @@ export class AnalyticsService {
     }));
   }
 
-  async getReportsByDay(
-    brandId?: string,
-    from?:    string,
-    to?:      string,
-  ) {
+  async getReportsByDay(brandId?: string, from?: string, to?: string) {
     let sql = `
       SELECT
         DATE(report_date) AS day,
@@ -191,7 +180,7 @@ export class AnalyticsService {
 
     sql += ` GROUP BY DATE(report_date), report_type ORDER BY day DESC LIMIT 60`;
 
-    return this.dataSource.query(sql, params);
+    return this.dataSource.query<Record<string, unknown>[]>(sql, params);
   }
 
   async getTopFlaggedProducts(brandId?: string, limit = 10) {
@@ -219,6 +208,6 @@ export class AnalyticsService {
       LIMIT $${params.length}
     `;
 
-    return this.dataSource.query(sql, params);
+    return this.dataSource.query<Record<string, unknown>[]>(sql, params);
   }
 }

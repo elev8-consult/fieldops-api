@@ -4,6 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 
 @Injectable()
@@ -23,7 +24,9 @@ export class InternalApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('INTERNAL_API_KEY is not configured');
     }
 
-    if (token !== expected) {
+    const given = Buffer.from(token);
+    const wanted = Buffer.from(expected);
+    if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
       throw new UnauthorizedException('Invalid internal API key');
     }
 

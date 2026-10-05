@@ -14,7 +14,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { scopedBrandFilter } from '../common/brand-scope';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { parseLimit, parsePage } from '../common/pagination';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -41,23 +43,24 @@ export class ProductsController {
   @Get()
   @UseGuards(JwtAuthGuard)
   findAll(
+    @CurrentUser() current: JwtUser,
     @Query('brand_id') brandId?: string,
-    @Query('flow')     flow?:    string,
-    @Query('search')   search?:  string,
-    @Query('page')     page?:    string,
-    @Query('limit')    limit?:   string,
+    @Query('flow') flow?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    const parsedPage  = page  ? parseInt(page,  10) : 1;
-    const parsedLimit = limit ? parseInt(limit, 10) : 100;
+    const requestedBrand =
+      brandId && brandId !== 'NaN' && brandId !== 'undefined'
+        ? brandId
+        : undefined;
 
     return this.productsService.findAll({
-      brandId: brandId && brandId !== 'NaN' && brandId !== 'undefined'
-        ? brandId
-        : undefined,
-      flow:    flow   || undefined,
-      search:  search || undefined,
-      page:    isNaN(parsedPage)  ? 1   : parsedPage,
-      limit:   isNaN(parsedLimit) ? 100 : parsedLimit,
+      brandId: scopedBrandFilter(current, requestedBrand),
+      flow: flow || undefined,
+      search: search || undefined,
+      page: parsePage(page),
+      limit: parseLimit(limit, 100),
     });
   }
 

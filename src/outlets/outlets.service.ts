@@ -136,7 +136,10 @@ export class OutletsService {
         })),
       };
     } catch (error) {
-      this.logger.error('outlets.match failed', { error } as any);
+      this.logger.error(
+        'outlets.match failed',
+        error instanceof Error ? error.stack : String(error),
+      );
       return {
         outlet_id: null,
         outlet_name: null,

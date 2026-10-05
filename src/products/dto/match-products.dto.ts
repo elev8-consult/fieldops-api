@@ -1,10 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import {
-  IsArray,
-  IsOptional,
-  IsString,
-  ValidateNested,
-} from 'class-validator';
+import { IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
 
 export class MatchProductItemDto {
   @IsString()
@@ -14,14 +9,14 @@ export class MatchProductItemDto {
 export class MatchProductsDto {
   @IsOptional()
   @IsString()
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   brandId?: string;
 
   @IsOptional()
   @IsString()
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   brandRaw?: string;

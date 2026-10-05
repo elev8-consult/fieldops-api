@@ -126,7 +126,10 @@ export class BrandsService {
         })),
       };
     } catch (error) {
-      this.logger.error('brands.match failed', { error } as any);
+      this.logger.error(
+        'brands.match failed',
+        error instanceof Error ? error.stack : String(error),
+      );
       return {
         brand_id: null,
         brand_name: null,

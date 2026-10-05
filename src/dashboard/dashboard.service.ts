@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import ExcelJS from 'exceljs';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
@@ -64,7 +68,10 @@ export class DashboardService {
       if (current.brandId == null) {
         throw new ForbiddenException('User has no brand scope');
       }
-      if (requestedBrandId != null && String(current.brandId) !== requestedBrandId) {
+      if (
+        requestedBrandId != null &&
+        String(current.brandId) !== requestedBrandId
+      ) {
         throw new ForbiddenException('Out of scoped brand');
       }
       return String(current.brandId);
@@ -76,14 +83,22 @@ export class DashboardService {
     return raw.replace(/[\\/*?:[\]]/g, ' ').slice(0, 31);
   }
 
+  /** Calendar date (YYYY-MM-DD) in Beirut, where reports are dated. */
+  private beirutDate(d: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Beirut',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+  }
+
   private today(): string {
-    return new Date().toISOString().split('T')[0];
+    return this.beirutDate(new Date());
   }
 
   private daysAgo(n: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d.toISOString().split('T')[0];
+    return this.beirutDate(new Date(Date.now() - n * 86_400_000));
   }
 
   async getMerchandiserDashboard(
@@ -128,8 +143,10 @@ export class DashboardService {
 
     const params: unknown[] = [dateFrom, dateTo];
     let paramIdx = 3;
-    const brandClause = brandId != null ? `AND pr.brand_id = $${paramIdx++}` : '';
-    const outletClause = query.outlet_id != null ? `AND pr.outlet_id = $${paramIdx++}` : '';
+    const brandClause =
+      brandId != null ? `AND pr.brand_id = $${paramIdx++}` : '';
+    const outletClause =
+      query.outlet_id != null ? `AND pr.outlet_id = $${paramIdx++}` : '';
     const reportedByClause =
       query.reported_by != null ? `AND pr.reported_by = $${paramIdx++}` : '';
 
@@ -219,7 +236,8 @@ export class DashboardService {
 
     const flagParams: unknown[] = [dateFrom, dateTo];
     let flagIdx = 3;
-    const flagBrandClause = brandId != null ? `AND pr.brand_id = $${flagIdx++}` : '';
+    const flagBrandClause =
+      brandId != null ? `AND pr.brand_id = $${flagIdx++}` : '';
     const flagOutletClause =
       query.outlet_id != null ? `AND pr.outlet_id = $${flagIdx++}` : '';
     const flagReportedByClause =
@@ -248,7 +266,10 @@ export class DashboardService {
       flagParams,
     );
 
-    const flagMap: Record<string, { has_flags: boolean; pending_review: boolean }> = {};
+    const flagMap: Record<
+      string,
+      { has_flags: boolean; pending_review: boolean }
+    > = {};
     flagRows.forEach((row) => {
       flagMap[String(row.outlet_id)] = {
         has_flags: row.has_errors === true,
@@ -258,7 +279,8 @@ export class DashboardService {
 
     const summaryParams: unknown[] = [dateFrom, dateTo];
     let summaryIdx = 3;
-    const summaryBrandClause = brandId != null ? `AND pr.brand_id = $${summaryIdx++}` : '';
+    const summaryBrandClause =
+      brandId != null ? `AND pr.brand_id = $${summaryIdx++}` : '';
     const summaryOutletClause =
       query.outlet_id != null ? `AND pr.outlet_id = $${summaryIdx++}` : '';
     const summaryReportedByClause =
@@ -369,7 +391,8 @@ export class DashboardService {
 
       // Each line becomes one or more "lots": either its explicit batch rows,
       // or the line itself when it has none.
-      const rowBatches = row.item_id != null ? (batchMap[row.item_id] ?? []) : [];
+      const rowBatches =
+        row.item_id != null ? (batchMap[row.item_id] ?? []) : [];
       const rowLots =
         rowBatches.length > 0
           ? rowBatches
@@ -401,12 +424,14 @@ export class DashboardService {
         // Same product counted again on this report — merge the lots and sum.
         existing.batches.push(...rowLots);
         existing.quantity =
-          (existing.quantity ?? 0) + (row.quantity != null ? Number(row.quantity) : 0);
+          (existing.quantity ?? 0) +
+          (row.quantity != null ? Number(row.quantity) : 0);
         existing.has_batches = true;
         // Surface the soonest expiry at the cell level.
         if (
           row.expiry_date != null &&
-          (existing.expiry_date == null || row.expiry_date < existing.expiry_date)
+          (existing.expiry_date == null ||
+            row.expiry_date < existing.expiry_date)
         ) {
           existing.expiry_date = row.expiry_date;
         }
@@ -425,7 +450,8 @@ export class DashboardService {
     const columnTotals: Record<string, number> = {};
     Object.values(outletMap).forEach((outlet) => {
       Object.entries(outlet.cells).forEach(([productId, cell]) => {
-        columnTotals[productId] = (columnTotals[productId] ?? 0) + (cell.quantity ?? 0);
+        columnTotals[productId] =
+          (columnTotals[productId] ?? 0) + (cell.quantity ?? 0);
       });
     });
 
@@ -633,23 +659,45 @@ export class DashboardService {
   }
 
   private expiryFill(
-    cell: { quantity: number | null; expiry_date: string | null; expiry_raw?: string | null } | undefined,
+    cell:
+      | {
+          quantity: number | null;
+          expiry_date: string | null;
+          expiry_raw?: string | null;
+        }
+      | undefined,
   ): { type: 'pattern'; pattern: 'solid'; fgColor: { argb: string } } | null {
     if (!cell || cell.quantity === null || cell.quantity === 0) {
-      return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } }; // red-50: no stock
+      return {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFEF2F2' },
+      }; // red-50: no stock
     }
     if (!cell.expiry_date && !cell.expiry_raw) {
-      return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; // slate-200: missing expiry
+      return {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      }; // slate-200: missing expiry
     }
     if (cell.expiry_date) {
       const days = Math.floor(
         (new Date(cell.expiry_date).getTime() - Date.now()) / 86_400_000,
       );
       if (days < 0) {
-        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; // red-100: expired
+        return {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEE2E2' },
+        }; // red-100: expired
       }
       if (days <= 30) {
-        return { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEFCE8' } }; // yellow-50: expiring soon
+        return {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEFCE8' },
+        }; // yellow-50: expiring soon
       }
     }
     return null; // white: OK

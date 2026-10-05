@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { JwtUser } from '../../common/interfaces/jwt-user.interface';
 import {
@@ -24,9 +24,69 @@ export interface MobileSummary {
   } | null;
 }
 
+/** Reports are dated in Lebanon time, not UTC. */
+const BEIRUT_TODAY_SQL = `(now() AT TIME ZONE 'Asia/Beirut')::date`;
+
+function beirutToday(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Beirut',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 @Injectable()
 export class MobileService {
+  private readonly logger = new Logger(MobileService.name);
+  private hasSubmissionIdColumn: boolean | null = null;
+
   constructor(private readonly dataSource: DataSource) {}
+
+  /** The duplicate-submission key is ignored until migration 005 has run. */
+  private async submissionIdSupported(): Promise<boolean> {
+    if (this.hasSubmissionIdColumn == null) {
+      const rows = await this.dataSource.query<Array<{ ok: number }>>(
+        `SELECT 1 AS ok FROM information_schema.columns
+         WHERE table_name = 'parsed_reports' AND column_name = 'client_submission_id'`,
+      );
+      this.hasSubmissionIdColumn = rows.length > 0;
+      if (!this.hasSubmissionIdColumn) {
+        this.logger.warn(
+          'parsed_reports.client_submission_id missing; run migration 005',
+        );
+      }
+    }
+    return this.hasSubmissionIdColumn;
+  }
+
+  private async findExistingSubmission(
+    userId: string,
+    clientSubmissionId: string,
+  ): Promise<{
+    reportId: string;
+    reportIds: string[];
+    itemCount: number;
+  } | null> {
+    const rows = await this.dataSource.query<
+      Array<{ id: string; item_count: number }>
+    >(
+      `SELECT pr.id::text AS id, COUNT(mri.id)::int AS item_count
+       FROM parsed_reports pr
+       LEFT JOIN merchandiser_reports mr ON mr.report_id = pr.id
+       LEFT JOIN merchandiser_report_items mri ON mri.merchandiser_report_id = mr.id
+       WHERE pr.reported_by = $1 AND pr.client_submission_id = $2
+       GROUP BY pr.id
+       ORDER BY pr.id`,
+      [userId, clientSubmissionId],
+    );
+    if (!rows.length) return null;
+    return {
+      reportId: rows[0].id,
+      reportIds: rows.map((r) => r.id),
+      itemCount: rows.reduce((n, r) => n + r.item_count, 0),
+    };
+  }
 
   /**
    * Everything the mobile home screen needs: the user's assigned outlets with
@@ -49,7 +109,7 @@ export class MobileService {
            SELECT 1 FROM parsed_reports pr
            WHERE pr.reported_by = $1
              AND pr.outlet_id   = o.id
-             AND pr.report_date = CURRENT_DATE
+             AND pr.report_date = ${BEIRUT_TODAY_SQL}
          )                     AS visited_today
        FROM user_outlets uo
        JOIN outlets o   ON o.id = uo.outlet_id AND o.is_active = true
@@ -67,7 +127,7 @@ export class MobileService {
        JOIN merchandiser_reports mr       ON mr.report_id = pr.id
        JOIN merchandiser_report_items mri ON mri.merchandiser_report_id = mr.id
        WHERE pr.reported_by = $1
-         AND pr.report_date = CURRENT_DATE`,
+         AND pr.report_date = ${BEIRUT_TODAY_SQL}`,
       [current.id],
     );
 
@@ -102,7 +162,7 @@ export class MobileService {
     }));
 
     return {
-      date: new Date().toISOString().slice(0, 10),
+      date: beirutToday(),
       assignedCount: mapped.length,
       visitedCount: mapped.filter((o) => o.visitedToday).length,
       itemsToday: Number(totals?.items_today ?? 0),
@@ -127,6 +187,28 @@ export class MobileService {
     current: JwtUser,
     dto: SubmitMobileReportDto,
   ): Promise<{ reportId: string; reportIds: string[]; itemCount: number }> {
+    const submissionKey =
+      dto.clientSubmissionId && (await this.submissionIdSupported())
+        ? dto.clientSubmissionId
+        : null;
+    if (submissionKey) {
+      const existing = await this.findExistingSubmission(
+        current.id,
+        submissionKey,
+      );
+      if (existing) return existing;
+    }
+
+    const outletRows = await this.dataSource.query<Array<{ ok: number }>>(
+      `SELECT 1 AS ok FROM outlets WHERE id = $1`,
+      [dto.outletId],
+    );
+    if (!outletRows.length) {
+      throw new BadRequestException(
+        'Unknown store. Pull down to refresh your store list.',
+      );
+    }
+
     // Resolve each matched item's brand.
     const productIds = dto.items
       .map((i) => i.productId)
@@ -157,7 +239,8 @@ export class MobileService {
     // Determine which brand manual / unknown items belong to.
     const distinctBrands = [...new Set(matched.map((m) => m.brandId))];
     const fallbackBrand =
-      current.brandId ?? (distinctBrands.length === 1 ? distinctBrands[0] : null);
+      current.brandId ??
+      (distinctBrands.length === 1 ? distinctBrands[0] : null);
 
     if (unmatched.length > 0 && !fallbackBrand) {
       throw new BadRequestException(
@@ -171,7 +254,9 @@ export class MobileService {
       (groups.get(brandId) ?? groups.set(brandId, []).get(brandId)!).push(item);
     }
     if (unmatched.length > 0 && fallbackBrand) {
-      const arr = groups.get(fallbackBrand) ?? groups.set(fallbackBrand, []).get(fallbackBrand)!;
+      const arr =
+        groups.get(fallbackBrand) ??
+        groups.set(fallbackBrand, []).get(fallbackBrand)!;
       arr.push(...unmatched);
     }
 
@@ -179,52 +264,68 @@ export class MobileService {
       throw new BadRequestException('No items to submit.');
     }
 
-    const reportDate = new Date().toISOString().slice(0, 10);
+    const reportDate = beirutToday();
     const reportIds: string[] = [];
     let itemCount = 0;
 
-    await this.dataSource.transaction(async (manager) => {
-      for (const [brandId, items] of groups) {
-        const parsed = await manager.query<Array<{ id: string }>>(
-          `INSERT INTO parsed_reports
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        for (const [brandId, items] of groups) {
+          const parsed = await manager.query<Array<{ id: string }>>(
+            `INSERT INTO parsed_reports
              (message_id, brand_id, outlet_id, reported_by, report_date,
-              report_type, status, confidence, is_depot_report, source)
+              report_type, status, confidence, is_depot_report, source
+              ${submissionKey ? ', client_submission_id' : ''})
            VALUES (NULL, $1, $2, $3, $4,
               'merchandiser'::report_type, 'approved'::parsed_report_status,
-              1, false, 'mobile_app')
+              1, false, 'mobile_app'
+              ${submissionKey ? ', $5' : ''})
            RETURNING id::text AS id`,
-          [brandId, dto.outletId, current.id, reportDate],
-        );
-        const reportId = parsed[0].id;
-        reportIds.push(reportId);
+            submissionKey
+              ? [brandId, dto.outletId, current.id, reportDate, submissionKey]
+              : [brandId, dto.outletId, current.id, reportDate],
+          );
+          const reportId = parsed[0].id;
+          reportIds.push(reportId);
 
-        const merch = await manager.query<Array<{ id: string }>>(
-          `INSERT INTO merchandiser_reports (report_id, promo_type, notes)
+          const merch = await manager.query<Array<{ id: string }>>(
+            `INSERT INTO merchandiser_reports (report_id, promo_type, notes)
            VALUES ($1, NULL, NULL)
            RETURNING id::text AS id`,
-          [reportId],
-        );
-        const merchId = merch[0].id;
+            [reportId],
+          );
+          const merchId = merch[0].id;
 
-        for (const item of items) {
-          await manager.query(
-            `INSERT INTO merchandiser_report_items
+          for (const item of items) {
+            await manager.query(
+              `INSERT INTO merchandiser_report_items
                (merchandiser_report_id, product_id, product_name_raw,
                 quantity, expiry_date, expiry_raw, is_product_matched)
              VALUES ($1, $2, $3, $4, $5, NULL, $6)`,
-            [
-              merchId,
-              item.productId ?? null,
-              item.productNameRaw,
-              item.quantity,
-              item.expiryDate ?? null,
-              !!item.productId,
-            ],
-          );
-          itemCount += 1;
+              [
+                merchId,
+                item.productId ?? null,
+                item.productNameRaw,
+                item.quantity,
+                item.expiryDate ?? null,
+                !!item.productId,
+              ],
+            );
+            itemCount += 1;
+          }
         }
+      });
+    } catch (err) {
+      // A parallel retry of the same submission won the unique index race.
+      if (submissionKey && (err as { code?: string })?.code === '23505') {
+        const existing = await this.findExistingSubmission(
+          current.id,
+          submissionKey,
+        );
+        if (existing) return existing;
       }
-    });
+      throw err;
+    }
 
     return { reportId: reportIds[0], reportIds, itemCount };
   }

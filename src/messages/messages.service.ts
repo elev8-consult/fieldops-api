@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { lockedBrandId } from '../common/brand-scope';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { WhatsappMessage } from './entities/whatsapp-message.entity';
 
@@ -16,14 +17,14 @@ export class MessagesService {
   ) {}
 
   async findAll(filters: {
-    status?:      string;
-    reportType?:  string;
-    brandId?:     string;
+    status?: string;
+    reportType?: string;
+    brandId?: string;
     senderPhone?: string;
-    from?:        string;
-    to?:          string;
-    page?:        number;
-    limit?:       number;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
   }) {
     const {
       status,
@@ -32,7 +33,7 @@ export class MessagesService {
       senderPhone,
       from,
       to,
-      page  = 1,
+      page = 1,
       limit = 20,
     } = filters;
 
@@ -42,11 +43,13 @@ export class MessagesService {
       .take(limit)
       .skip((page - 1) * limit);
 
-    if (status)      query.andWhere('m.status = :status',            { status });
-    if (reportType)  query.andWhere('m.report_type = :reportType',   { reportType });
-    if (senderPhone) query.andWhere('m.sender_phone = :senderPhone', { senderPhone });
-    if (from)        query.andWhere('m.received_at >= :from',        { from });
-    if (to)          query.andWhere('m.received_at <= :to',          { to });
+    if (status) query.andWhere('m.status = :status', { status });
+    if (reportType)
+      query.andWhere('m.report_type = :reportType', { reportType });
+    if (senderPhone)
+      query.andWhere('m.sender_phone = :senderPhone', { senderPhone });
+    if (from) query.andWhere('m.received_at >= :from', { from });
+    if (to) query.andWhere('m.received_at <= :to', { to });
 
     if (brandId) {
       query.innerJoin(
@@ -71,15 +74,13 @@ export class MessagesService {
       throw new NotFoundException('Message not found');
     }
 
-    if (current.role === 'brand_manager') {
-      if (current.brandId == null) {
-        throw new ForbiddenException();
-      }
-      const linked = await this.msgRepo.manager.query(
+    const brandId = lockedBrandId(current);
+    if (brandId != null) {
+      const linked = await this.msgRepo.manager.query<unknown[]>(
         `SELECT 1 FROM parsed_reports WHERE message_id = $1 AND brand_id = $2 LIMIT 1`,
-        [id, current.brandId],
+        [id, brandId],
       );
-      if (!linked?.length) {
+      if (!linked.length) {
         throw new ForbiddenException('Out of brand scope');
       }
     }

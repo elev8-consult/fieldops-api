@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -41,14 +41,43 @@ export class UsersService {
     return rows.map((r) => r.outletId);
   }
 
+  async getAssignedOutletIdsInScope(
+    userId: string,
+    current: JwtUser,
+  ): Promise<string[]> {
+    await this.findOne(userId, current);
+    return this.getAssignedOutletIds(userId);
+  }
+
   /** Replace a user's outlet assignments wholesale. */
-  async setAssignedOutlets(userId: string, outletIds: string[]): Promise<void> {
-    await this.userOutletRepo.delete({ userId });
-    const unique = [...new Set(outletIds)];
-    if (unique.length === 0) return;
-    await this.userOutletRepo.insert(
-      unique.map((outletId) => ({ userId, outletId })),
-    );
+  async setAssignedOutlets(
+    userId: string,
+    outletIds: string[],
+    manager?: EntityManager,
+  ): Promise<void> {
+    const run = async (m: EntityManager) => {
+      await m.delete(UserOutlet, { userId });
+      const unique = [...new Set(outletIds)];
+      if (unique.length === 0) return;
+      await m.insert(
+        UserOutlet,
+        unique.map((outletId) => ({ userId, outletId })),
+      );
+    };
+    if (manager) return run(manager);
+    return this.userOutletRepo.manager.transaction(run);
+  }
+
+  /** Re-read after save so hashes assigned in memory never reach the response. */
+  private async reloadForResponse(id: string): Promise<User> {
+    const user = await this.userRepo.findOne({
+      where: { id },
+      relations: ['brand'],
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
   }
 
   async findByEmailWithPassword(email: string): Promise<User | null> {
@@ -68,7 +97,10 @@ export class UsersService {
     });
   }
 
-  private assertBrandManagerScope(current: JwtUser, targetBrandId: string | null) {
+  private assertBrandManagerScope(
+    current: JwtUser,
+    targetBrandId: string | null,
+  ) {
     if (current.role !== 'brand_manager') return;
     if (current.brandId == null || targetBrandId !== current.brandId) {
       throw new ForbiddenException('Out of brand scope');
@@ -168,16 +200,20 @@ export class UsersService {
       brandId:
         dto.role === 'super_admin'
           ? null
-          : (dto.brandId ?? (current.role === 'brand_manager' ? current.brandId : null)),
+          : (dto.brandId ??
+            (current.role === 'brand_manager' ? current.brandId : null)),
       isActive: true,
       approvalStatus: 'approved',
     });
-    const saved = await this.userRepo.save(user);
+    const saved = await this.userRepo.manager.transaction(async (m) => {
+      const row = await m.save(user);
+      if (dto.outletIds?.length) {
+        await this.setAssignedOutlets(row.id, dto.outletIds, m);
+      }
+      return row;
+    });
 
-    if (dto.outletIds?.length) {
-      await this.setAssignedOutlets(saved.id, dto.outletIds);
-    }
-    return saved;
+    return this.reloadForResponse(saved.id);
   }
 
   async update(
@@ -192,6 +228,9 @@ export class UsersService {
 
     if (current.role === 'brand_manager') {
       this.assertBrandManagerScope(current, user.brandId);
+      if (!MOBILE_ROLES.includes(user.role)) {
+        throw new ForbiddenException('Brand managers can only edit app users');
+      }
       if (dto.role != null && dto.role !== user.role) {
         throw new ForbiddenException('Cannot change role');
       }
@@ -204,11 +243,29 @@ export class UsersService {
 
     if (dto.fullName != null) user.fullName = dto.fullName;
     if (dto.whatsappPhone !== undefined) {
-      user.whatsappPhone = dto.whatsappPhone?.trim()
+      const phone = dto.whatsappPhone?.trim()
         ? UsersService.normalizePhone(dto.whatsappPhone)
         : null;
+      if (phone != null && phone !== user.whatsappPhone) {
+        const phoneTaken = await this.userRepo.exist({
+          where: { whatsappPhone: phone },
+        });
+        if (phoneTaken) {
+          throw new ForbiddenException('Phone number already in use');
+        }
+      }
+      user.whatsappPhone = phone;
     }
-    if (dto.email != null) user.email = dto.email.trim().toLowerCase();
+    if (dto.email != null) {
+      const email = dto.email.trim().toLowerCase();
+      if (email !== user.email) {
+        const emailTaken = await this.userRepo.exist({ where: { email } });
+        if (emailTaken) {
+          throw new ForbiddenException('Email already in use');
+        }
+      }
+      user.email = email;
+    }
     if (dto.password != null) {
       user.passwordHash = await bcrypt.hash(dto.password, 12);
     }
@@ -222,13 +279,14 @@ export class UsersService {
       user.isActive = dto.isActive;
     }
 
-    const saved = await this.userRepo.save(user);
+    await this.userRepo.manager.transaction(async (m) => {
+      await m.save(user);
+      if (dto.outletIds !== undefined) {
+        await this.setAssignedOutlets(user.id, dto.outletIds ?? [], m);
+      }
+    });
 
-    if (dto.outletIds !== undefined) {
-      await this.setAssignedOutlets(saved.id, dto.outletIds ?? []);
-    }
-
-    return saved;
+    return this.reloadForResponse(user.id);
   }
 
   private async findMobileUserInScope(
@@ -257,9 +315,15 @@ export class UsersService {
   async generateLoginCode(
     id: string,
     current: JwtUser,
+    manualCode?: string,
   ): Promise<{ code: string }> {
     const user = await this.findMobileUserInScope(id, current);
-    const code = String(randomInt(100000, 1000000));
+    if (manualCode != null && UsersService.isTrivialPin(manualCode)) {
+      throw new BadRequestException(
+        'PIN is too easy to guess (repeated or sequential digits)',
+      );
+    }
+    const code = manualCode ?? String(randomInt(100000, 1000000));
     await this.userRepo.update(user.id, {
       loginCodeHash: await bcrypt.hash(code, 10),
       loginCodeSetAt: new Date(),
@@ -267,6 +331,13 @@ export class UsersService {
       lockedUntil: null,
     });
     return { code };
+  }
+
+  static isTrivialPin(pin: string): boolean {
+    if (/^(\d)\1+$/.test(pin)) return true;
+    const asc = '01234567890';
+    const desc = '09876543210';
+    return asc.includes(pin) || desc.includes(pin);
   }
 
   /** Remove the permanent code so the user falls back to WhatsApp OTP. */

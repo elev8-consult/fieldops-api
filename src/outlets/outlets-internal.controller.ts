@@ -1,5 +1,12 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { InternalApiKeyGuard } from '../common/guards/internal-api-key.guard';
+import { MatchErrorStatusInterceptor } from '../common/interceptors/match-error-status.interceptor';
 import { MatchOutletDto } from './dto/match-outlet.dto';
 import type { MatchOutletResponseDto } from './dto/match-outlet-response.dto';
 import { OutletsService } from './outlets.service';
@@ -10,6 +17,7 @@ export class OutletsInternalController {
 
   @Post('match')
   @UseGuards(InternalApiKeyGuard)
+  @UseInterceptors(MatchErrorStatusInterceptor)
   matchOutlet(@Body() body: MatchOutletDto): Promise<MatchOutletResponseDto> {
     return this.outletsService.matchOutlet(body.location_raw, body.brand_id);
   }
