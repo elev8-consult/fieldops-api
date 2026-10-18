@@ -13,6 +13,7 @@ import { OutletsModule } from './outlets/outlets.module';
 import { ProductsModule } from './products/products.module';
 import { ReportsModule } from './reports/reports.module';
 import { ReviewModule } from './review/review.module';
+import { ShelfPhotosModule } from './shelf-photos/shelf-photos.module';
 import { UnknownSendersModule } from './unknown-senders/unknown-senders.module';
 import { UsersModule } from './users/users.module';
 
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module';
     MessagesModule,
     ReportsModule,
     ReviewModule,
+    ShelfPhotosModule,
     AnalyticsModule,
     UnknownSendersModule,
   ],
