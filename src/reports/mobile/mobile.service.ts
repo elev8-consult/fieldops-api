@@ -185,7 +185,12 @@ export class MobileService {
   async today(current: JwtUser, outletId: string): Promise<{
     outletId: string;
     clientSubmissionId: string | null;
-    items: MobileItemDto[];
+    items: Array<
+      MobileItemDto & {
+        brandId: string | null;
+        brandName: string | null;
+      }
+    >;
   }> {
     const rows = await this.dataSource.query<
       Array<{
@@ -195,6 +200,8 @@ export class MobileService {
         quantity: number | null;
         expiry_date: string | null;
         client_submission_id: string | null;
+        brand_id: string | null;
+        brand_name: string | null;
       }>
     >(
       `SELECT
@@ -203,11 +210,14 @@ export class MobileService {
          COALESCE(mri.product_name_raw, p.canonical_name, '') AS product_name_raw,
          mri.quantity         AS quantity,
          to_char(mri.expiry_date, 'YYYY-MM-DD') AS expiry_date,
-         pr.client_submission_id
+         pr.client_submission_id,
+         p.brand_id::text     AS brand_id,
+         b.name               AS brand_name
        FROM parsed_reports pr
        JOIN merchandiser_reports mr ON mr.report_id = pr.id
        JOIN merchandiser_report_items mri ON mri.merchandiser_report_id = mr.id
        LEFT JOIN products p ON p.id = mri.product_id
+       LEFT JOIN brands b ON b.id = p.brand_id
        WHERE pr.reported_by = $1
          AND pr.outlet_id   = $2
          AND pr.report_date = ${BEIRUT_TODAY_SQL}
@@ -226,6 +236,8 @@ export class MobileService {
         productNameRaw: r.product_name_raw ?? '',
         quantity: Number(r.quantity ?? 0),
         expiryDate: r.expiry_date,
+        brandId: r.brand_id,
+        brandName: r.brand_name,
       })),
     };
   }

@@ -1,4 +1,9 @@
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +21,33 @@ export class ShelfPhotoStorage {
     if (this.ready != null) return this.ready;
     this.ready = this.connect() != null;
     return this.ready;
+  }
+
+  async put(
+    objectKey: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const client = this.connect();
+    if (!client || !this.bucket) {
+      throw new Error('Photo storage is not configured.');
+    }
+    await client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: objectKey,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  async remove(objectKey: string): Promise<void> {
+    const client = this.connect();
+    if (!client || !this.bucket) return;
+    await client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+    );
   }
 
   async presign(objectKey: string): Promise<string | null> {
