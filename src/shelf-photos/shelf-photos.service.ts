@@ -69,8 +69,8 @@ export class ShelfPhotosService {
         shelf_index: string | number;
         visit_date: string;
         merchandiser_name: string;
-        before_key: string;
-        after_key: string;
+        before_key: string | null;
+        after_key: string | null;
       }>
     >(
       `SELECT
@@ -113,7 +113,7 @@ export class ShelfPhotosService {
        JOIN users u   ON u.id = p.reported_by
        LEFT JOIN regions r ON r.id = o.region_id
        WHERE p.before_key IS NOT NULL
-         AND p.after_key IS NOT NULL
+          OR p.after_key IS NOT NULL
        ORDER BY p.visit_date DESC, o.name, b.name, p.shelf_index`,
       [query.dateFrom, query.dateTo, brandId],
     );
@@ -142,8 +142,12 @@ export class ShelfPhotosService {
         shelfIndex: Number(row.shelf_index),
         visitDate: row.visit_date,
         merchandiserName: row.merchandiser_name,
-        beforeUrl: await this.storage.presign(row.before_key),
-        afterUrl: await this.storage.presign(row.after_key),
+        beforeUrl: row.before_key
+          ? await this.storage.presign(row.before_key)
+          : null,
+        afterUrl: row.after_key
+          ? await this.storage.presign(row.after_key)
+          : null,
       })),
     );
 
