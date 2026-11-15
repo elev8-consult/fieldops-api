@@ -25,10 +25,10 @@ import { OtpService } from './otp.service';
         if (!secret) {
           throw new Error('JWT_SECRET is required');
         }
-        return {
-          secret,
-          signOptions: { expiresIn: '30d' },
-        };
+        // No expiresIn: mobile sessions stay signed in until the account is
+        // deactivated or the user signs out. JwtStrategy also ignores exp on
+        // tokens issued before this change.
+        return { secret };
       },
       inject: [ConfigService],
     }),
