@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -17,6 +18,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import { ListShelfPhotosDto } from './dto/list-shelf-photos.dto';
 import { SaveShelfPhotoDto } from './dto/save-shelf-photo.dto';
+import { UpdateShelfPhotoNotesDto } from './dto/update-shelf-photo-notes.dto';
 import { VisitShelfPhotosDto } from './dto/visit-shelf-photos.dto';
 import { ShelfPhotosService } from './shelf-photos.service';
 
@@ -55,6 +57,15 @@ export class ShelfPhotosController {
     @UploadedFile() file: UploadedPhoto | undefined,
   ) {
     return this.shelfPhotos.save(current, dto, file);
+  }
+
+  @Patch('today/notes')
+  @Roles('merchandiser', 'promoter')
+  updateNotes(
+    @CurrentUser() current: JwtUser,
+    @Body() dto: UpdateShelfPhotoNotesDto,
+  ) {
+    return this.shelfPhotos.updateNotes(current, dto);
   }
 
   @Delete('today')

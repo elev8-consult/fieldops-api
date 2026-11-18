@@ -503,10 +503,14 @@ export class ProductsService {
       }
     }
 
+    const barcode = normalizeBarcode(dto.barcode);
+    if (barcode) await this.assertBarcodeAvailable(barcode);
+
     const product = this.productRepo.create({
       brandId: dto.brandId,
       canonicalName: dto.canonicalName,
       sku: dto.sku ?? null,
+      barcode,
       flow: dto.flow,
       unit: dto.unit ?? null,
       isActive: true,
@@ -534,6 +538,11 @@ export class ProductsService {
     if (dto.brandId != null) product.brandId = dto.brandId;
     if (dto.canonicalName != null) product.canonicalName = dto.canonicalName;
     if (dto.sku !== undefined) product.sku = dto.sku;
+    if (dto.barcode !== undefined) {
+      const barcode = normalizeBarcode(dto.barcode);
+      if (barcode) await this.assertBarcodeAvailable(barcode, id);
+      product.barcode = barcode;
+    }
     if (dto.flow != null) product.flow = dto.flow;
     if (dto.unit !== undefined) product.unit = dto.unit;
     if (dto.isActive != null && current.role === 'super_admin') {
@@ -541,6 +550,18 @@ export class ProductsService {
     }
 
     return this.productRepo.save(product);
+  }
+
+  private async assertBarcodeAvailable(
+    barcode: string,
+    exceptId?: string,
+  ): Promise<void> {
+    const owner = await this.productRepo.findOne({ where: { barcode } });
+    if (owner && owner.id !== exceptId) {
+      throw new BadRequestException(
+        'That barcode is already used by another product',
+      );
+    }
   }
 
   /**
@@ -924,4 +945,10 @@ export class ProductsService {
     }
     await this.aliasRepo.remove(alias);
   }
+}
+
+function normalizeBarcode(value?: string | null): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
 }

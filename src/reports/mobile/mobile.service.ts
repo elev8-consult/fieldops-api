@@ -106,11 +106,19 @@ export class MobileService {
          o.id::text            AS id,
          o.name                AS name,
          r.name                AS region_name,
-         EXISTS (
-           SELECT 1 FROM parsed_reports pr
-           WHERE pr.reported_by = $1
-             AND pr.outlet_id   = o.id
-             AND pr.report_date = ${BEIRUT_TODAY_SQL}
+         (
+           EXISTS (
+             SELECT 1 FROM parsed_reports pr
+             WHERE pr.reported_by = $1
+               AND pr.outlet_id   = o.id
+               AND pr.report_date = ${BEIRUT_TODAY_SQL}
+           )
+           OR EXISTS (
+             SELECT 1 FROM shelf_photos sp
+             WHERE sp.reported_by = $1
+               AND sp.outlet_id   = o.id
+               AND sp.visit_date  = ${BEIRUT_TODAY_SQL}
+           )
          )                     AS visited_today
        FROM user_outlets uo
        JOIN outlets o   ON o.id = uo.outlet_id AND o.is_active = true

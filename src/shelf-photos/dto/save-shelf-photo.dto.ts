@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class SaveShelfPhotoDto {
   @IsUUID()
@@ -14,4 +14,9 @@ export class SaveShelfPhotoDto {
 
   @IsIn(['before', 'after'])
   kind: 'before' | 'after';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
 }

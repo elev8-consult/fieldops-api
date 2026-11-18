@@ -8,6 +8,7 @@ import { DataSource } from 'typeorm';
 import type { JwtUser } from '../common/interfaces/jwt-user.interface';
 import type { ListShelfPhotosDto } from './dto/list-shelf-photos.dto';
 import type { SaveShelfPhotoDto } from './dto/save-shelf-photo.dto';
+import type { UpdateShelfPhotoNotesDto } from './dto/update-shelf-photo-notes.dto';
 import { ShelfPhotoStorage } from './shelf-photo-storage.service';
 
 const BEIRUT_TODAY_SQL = `(now() AT TIME ZONE 'Asia/Beirut')::date`;
@@ -18,6 +19,7 @@ export interface VisitShelfPhoto {
   shelfId: string;
   kind: 'before' | 'after';
   url: string | null;
+  notes: string | null;
 }
 
 export interface ShelfPhotoPair {
@@ -33,6 +35,8 @@ export interface ShelfPhotoPair {
   merchandiserName: string;
   beforeUrl: string | null;
   afterUrl: string | null;
+  beforeNotes: string | null;
+  afterNotes: string | null;
 }
 
 export interface ShelfPhotoOutletOption {
@@ -71,6 +75,8 @@ export class ShelfPhotosService {
         merchandiser_name: string;
         before_key: string | null;
         after_key: string | null;
+        before_notes: string | null;
+        after_notes: string | null;
       }>
     >(
       `SELECT
@@ -84,7 +90,9 @@ export class ShelfPhotosService {
          p.visit_date::text    AS visit_date,
          u.full_name           AS merchandiser_name,
          p.before_key,
-         p.after_key
+         p.after_key,
+         p.before_notes,
+         p.after_notes
        FROM (
          SELECT
            g.*,
@@ -101,7 +109,9 @@ export class ShelfPhotosService {
              shelf_id,
              min(created_at) AS first_at,
              max(object_key) FILTER (WHERE kind = 'before') AS before_key,
-             max(object_key) FILTER (WHERE kind = 'after')  AS after_key
+             max(object_key) FILTER (WHERE kind = 'after')  AS after_key,
+             max(notes) FILTER (WHERE kind = 'before') AS before_notes,
+             max(notes) FILTER (WHERE kind = 'after')  AS after_notes
            FROM shelf_photos
            WHERE visit_date BETWEEN $1::date AND $2::date
              AND ($3::uuid IS NULL OR brand_id = $3)
@@ -148,6 +158,8 @@ export class ShelfPhotosService {
         afterUrl: row.after_key
           ? await this.storage.presign(row.after_key)
           : null,
+        beforeNotes: row.before_notes?.trim() || null,
+        afterNotes: row.after_notes?.trim() || null,
       })),
     );
 
@@ -168,6 +180,7 @@ export class ShelfPhotosService {
         shelf_id: string;
         kind: 'before' | 'after';
         object_key: string;
+        notes: string | null;
       }>
     >(
       `SELECT
@@ -175,7 +188,8 @@ export class ShelfPhotosService {
          b.name           AS brand_name,
          p.shelf_id::text AS shelf_id,
          p.kind,
-         p.object_key
+         p.object_key,
+         p.notes
        FROM shelf_photos p
        JOIN brands b ON b.id = p.brand_id
        WHERE p.reported_by = $1
@@ -192,6 +206,7 @@ export class ShelfPhotosService {
         shelfId: row.shelf_id,
         kind: row.kind,
         url: await this.storage.presign(row.object_key),
+        notes: row.notes?.trim() || null,
       })),
     );
     return { photos };
@@ -234,13 +249,25 @@ export class ShelfPhotosService {
     const objectKey = `shelf/${date}/${dto.outletId}/${current.id}/${dto.brandId}/${shelfId}/${dto.kind}-${Date.now()}.jpg`;
     await this.storage.put(objectKey, file.buffer, 'image/jpeg');
 
+    const notes = normalizeNotes(dto.notes);
     await this.dataSource.query(
       `INSERT INTO shelf_photos
-         (brand_id, outlet_id, reported_by, visit_date, shelf_id, kind, object_key)
-       VALUES ($1, $2, $3, ${BEIRUT_TODAY_SQL}, $4, $5, $6)
+         (brand_id, outlet_id, reported_by, visit_date, shelf_id, kind, object_key, notes)
+       VALUES ($1, $2, $3, ${BEIRUT_TODAY_SQL}, $4, $5, $6, $7)
        ON CONFLICT (reported_by, outlet_id, brand_id, visit_date, shelf_id, kind)
-       DO UPDATE SET object_key = EXCLUDED.object_key, created_at = now()`,
-      [dto.brandId, dto.outletId, current.id, shelfId, dto.kind, objectKey],
+       DO UPDATE SET
+         object_key = EXCLUDED.object_key,
+         notes = COALESCE(EXCLUDED.notes, shelf_photos.notes),
+         created_at = now()`,
+      [
+        dto.brandId,
+        dto.outletId,
+        current.id,
+        shelfId,
+        dto.kind,
+        objectKey,
+        notes,
+      ],
     );
 
     return {
@@ -249,6 +276,67 @@ export class ShelfPhotosService {
       shelfId,
       kind: dto.kind,
       url: await this.storage.presign(objectKey),
+      notes,
+    };
+  }
+
+  async updateNotes(
+    current: JwtUser,
+    dto: UpdateShelfPhotoNotesDto,
+  ): Promise<VisitShelfPhoto> {
+    await this.assertOutlet(dto.outletId);
+    const notes = normalizeNotes(dto.notes);
+    // Postgres UPDATE … RETURNING comes back as [rows, rowCount].
+    const [rows] = await this.dataSource.query<
+      [
+        Array<{
+          brand_id: string;
+          brand_name: string;
+          shelf_id: string;
+          kind: 'before' | 'after';
+          object_key: string;
+          notes: string | null;
+        }>,
+        number,
+      ]
+    >(
+      `UPDATE shelf_photos p
+       SET notes = $6
+       FROM brands b
+       WHERE p.brand_id = b.id
+         AND p.reported_by = $1
+         AND p.outlet_id = $2
+         AND p.brand_id = $3
+         AND p.kind = $4
+         AND p.visit_date = ${BEIRUT_TODAY_SQL}
+         AND ($5::uuid IS NULL OR p.shelf_id = $5)
+       RETURNING
+         p.brand_id::text AS brand_id,
+         b.name AS brand_name,
+         p.shelf_id::text AS shelf_id,
+         p.kind,
+         p.object_key,
+         p.notes`,
+      [
+        current.id,
+        dto.outletId,
+        dto.brandId,
+        dto.kind,
+        dto.shelfId ?? null,
+        notes,
+      ],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new BadRequestException('Take the photo before adding a note.');
+    }
+    return {
+      brandId: row.brand_id,
+      brandName: row.brand_name,
+      shelfId: row.shelf_id,
+      kind: row.kind,
+      url: await this.storage.presign(row.object_key),
+      notes: row.notes?.trim() || null,
     };
   }
 
@@ -311,4 +399,10 @@ export class ShelfPhotosService {
       );
     }
   }
+}
+
+function normalizeNotes(value?: string | null): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
 }
